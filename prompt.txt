@@ -1,39 +1,4 @@
-I have created docs/SCHEMA.md with complete database design.
-Now create Python SQLAlchemy models based on that schema.
+Prompt: "Generate markdown documentation of all database tables, columns, 
+constraints, and relationships from the SQLAlchemy models in src/utils/database.py"
 
-File: src/models/database.py
-
-Requirements:
-1. Create following classes:
-   - Currency
-   - ApiSource
-   - ExchangeRate
-   - ApiCall
-   - DataQualityMetric
-   - DailySnapshot
-
-2. For each class:
-   - Use declarative base
-   - Proper primary keys
-   - Foreign key relationships
-   - Column constraints (nullable, default, check)
-   - Indexes as specified in schema
-   - Timestamps (created_at, updated_at auto-set)
-   - Docstrings
-
-3. Include:
-   - from sqlalchemy import *
-   - Base declarative setup
-   - session management function
-   - connection utilities
-
-4. Configuration:
-   - Read DB_URL from environment variable
-   - Support dev/staging/prod configs
-   - Connection pooling setup
-
-Generate complete, production-ready code with:
-- Type hints
-- Docstrings
-- Error handling
-- Logging
+File : docs/SCHEMA_TEMPLATE.md
