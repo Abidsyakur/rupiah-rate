@@ -1,0 +1,20 @@
+-- Schema definition for raw data source
+
+version: 2
+
+sources:
+  - name: raw
+    database: rupiah_rates
+    schema: raw
+    tables:
+      - name: exchange_rates
+        description: Raw exchange rate data from external sources
+        columns:
+          - name: id
+            description: Unique identifier
+          - name: date
+            description: Date of the exchange rate
+          - name: currency_pair
+            description: Currency pair (e.g., IDR/USD)
+          - name: closing_rate
+            description: Closing exchange rate

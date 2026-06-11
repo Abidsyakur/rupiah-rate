@@ -1,0 +1,35 @@
+# Development Environment Configuration
+
+environment: development
+
+database:
+  host: localhost
+  port: 5432
+  name: rupiah_rates_dev
+  user: postgres
+  password: postgres
+  pool_size: 5
+  max_overflow: 10
+
+api:
+  timeout: 30
+  retries: 3
+  base_url: https://api.example.com
+
+logging:
+  level: DEBUG
+  format: json
+  file: logs/dev.log
+
+pipeline:
+  schedule: "0 10 * * *"
+  enable_backfill: true
+  backfill_days: 30
+
+airflow:
+  dag_folder: ./airflow/dags
+  executor: LocalExecutor
+
+dbt:
+  profiles_dir: ./dbt
+  target: dev

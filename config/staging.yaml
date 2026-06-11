@@ -1,0 +1,35 @@
+# Staging Environment Configuration
+
+environment: staging
+
+database:
+  host: staging-db.internal
+  port: 5432
+  name: rupiah_rates_staging
+  user: app_user
+  password: ${DB_PASSWORD}
+  pool_size: 10
+  max_overflow: 20
+
+api:
+  timeout: 30
+  retries: 3
+  base_url: https://api-staging.example.com
+
+logging:
+  level: INFO
+  format: json
+  file: /var/log/rupiah/staging.log
+
+pipeline:
+  schedule: "0 10 * * *"
+  enable_backfill: false
+  backfill_days: 7
+
+airflow:
+  dag_folder: /app/airflow/dags
+  executor: CeleryExecutor
+
+dbt:
+  profiles_dir: /app/dbt
+  target: staging

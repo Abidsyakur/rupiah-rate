@@ -1,0 +1,43 @@
+# Core
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Exchange Rate Data Sources
+yfinance==0.2.33          # Yfinance API
+requests==2.31.0          # HTTP requests with retry support
+
+# Data Processing
+pandas==2.1.3
+numpy==1.26.2
+
+# Database
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.23
+alembic==1.13.0
+
+# Airflow (Orchestration)
+apache-airflow==2.7.2
+apache-airflow-providers-postgres==5.10.0
+
+# dbt (Transformations)
+dbt-postgres==1.7.0
+dbt-core==1.7.0
+
+# Logging & Monitoring
+python-json-logger==2.0.7
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# Code Quality
+black==23.12.0
+flake8==6.1.0
+isort==5.13.2
+mypy==1.7.1
+
+# Development
+ipython==8.18.1
+jupyter==1.0.0

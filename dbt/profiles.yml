@@ -1,0 +1,34 @@
+rupiah_analytics:
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      user: postgres
+      password: postgres
+      port: 5432
+      dbname: rupiah_rates_dev
+      schema: staging
+      threads: 4
+      keepalives_idle: 0
+
+    staging:
+      type: postgres
+      host: staging-db.internal
+      user: "{{ env_var('DBT_USER') }}"
+      password: "{{ env_var('DBT_PASSWORD') }}"
+      port: 5432
+      dbname: rupiah_rates_staging
+      schema: staging
+      threads: 8
+
+    prod:
+      type: postgres
+      host: prod-db.internal
+      user: "{{ env_var('DBT_USER') }}"
+      password: "{{ env_var('DBT_PASSWORD') }}"
+      port: 5432
+      dbname: rupiah_rates
+      schema: marts
+      threads: 8
+
+  target: dev
