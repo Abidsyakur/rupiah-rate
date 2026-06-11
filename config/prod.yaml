@@ -1,0 +1,36 @@
+# Production Environment Configuration
+
+environment: production
+
+database:
+  host: prod-db.internal
+  port: 5432
+  name: rupiah_rates
+  user: app_user
+  password: ${DB_PASSWORD}
+  pool_size: 20
+  max_overflow: 30
+  ssl_mode: require
+
+api:
+  timeout: 30
+  retries: 5
+  base_url: https://api.example.com
+
+logging:
+  level: WARNING
+  format: json
+  file: /var/log/rupiah/prod.log
+
+pipeline:
+  schedule: "0 10 * * *"
+  enable_backfill: false
+  backfill_days: 3
+
+airflow:
+  dag_folder: /app/airflow/dags
+  executor: KubernetesExecutor
+
+dbt:
+  profiles_dir: /app/dbt
+  target: prod
