@@ -22,7 +22,7 @@ from alembic import context
 # ---------------------------------------------------------------------------
 # Add src/ to sys.path so models can be imported
 # ---------------------------------------------------------------------------
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.utils.database import Base  # noqa: E402
 
