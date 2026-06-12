@@ -60,7 +60,7 @@ FRED_SERIES_MAP: Dict[str, str] = {
     "EUR_IDR": "DEXSDUS",   # placeholder — update with correct FRED series
 }
 
-FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
+FRED_BASE_URL = "https://api.stlouisfed.org/fred"
 
 # Validation bounds per pair  (rate > 0 AND rate < 100_000 as per spec)
 RATE_BOUNDS: Dict[str, tuple[float, float]] = {
@@ -477,11 +477,11 @@ class FREDExtractor(ExchangeRateExtractor):
 
     SUPPORTED_PAIRS: List[str] = list(FRED_SERIES_MAP.keys())
 
-    def __init__(self, api_key: Optional[str] = None) -> None:
+    def __init__(self, FRED_API_KEY: Optional[str] = None) -> None:
         """
         Parameters
         ----------
-        api_key:
+        FRED_API_KEY:
             FRED API key.  Falls back to the ``FRED_API_KEY`` environment
             variable when not supplied directly.
 
@@ -490,11 +490,11 @@ class FREDExtractor(ExchangeRateExtractor):
         EnvironmentError
             If no API key is available from either source.
         """
-        self._api_key = api_key or os.getenv("FRED_API_KEY")
+        self._api_key = FRED_API_KEY or os.getenv("FRED_API_KEY")
         if not self._api_key:
             raise EnvironmentError(
                 "FRED API key is required. "
-                "Set the FRED_API_KEY environment variable or pass api_key= to FREDExtractor()."
+                "Set the FRED_API_KEY environment variable or pass FRED_API_KEY= to FREDExtractor()."
             )
         self._session = requests.Session()
         self._session.headers.update({"Accept": "application/json"})
