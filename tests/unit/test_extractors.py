@@ -41,9 +41,9 @@ import requests
 # We import from the source tree; adjust sys.path if running outside a
 # properly installed package (e.g. bare pytest invocation at repo root).
 import sys, pathlib
-sys.path.insert(0, str(pathlib.Path(__file__).parents[2] / "src"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from etl.extractors import (
+from src.src.etl.extractors import (
     DEFAULT_BOUNDS,
     FRED_BASE_URL,
     RATE_BOUNDS,
@@ -155,7 +155,7 @@ class TestValidateRate:
 class TestWithRetry:
     """Unit tests for the with_retry() exponential-backoff decorator."""
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_succeeds_on_first_attempt_no_sleep(self, mock_sleep):
         call_count = 0
 
@@ -170,7 +170,7 @@ class TestWithRetry:
         assert call_count == 1
         mock_sleep.assert_not_called()
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_retries_on_transient_error_then_succeeds(self, mock_sleep):
         attempts = []
 
@@ -191,7 +191,7 @@ class TestWithRetry:
         assert len(attempts) == 3
         assert mock_sleep.call_count == 2  # slept before attempt 2 and 3
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_raises_after_max_attempts_exhausted(self, mock_sleep):
         @with_retry(
             max_attempts=3,
@@ -206,7 +206,7 @@ class TestWithRetry:
             always_fails()
         assert mock_sleep.call_count == 2  # sleep before attempt 2 and 3
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_non_retryable_exception_propagates_immediately(self, mock_sleep):
         @with_retry(
             max_attempts=3,
@@ -221,8 +221,8 @@ class TestWithRetry:
             raises_value_error()
         mock_sleep.assert_not_called()  # no retry attempted
 
-    @patch("etl.extractors.random.uniform", return_value=0.0)
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.random.uniform", return_value=0.0)
+    @patch("src.etl.extractors.time.sleep")
     def test_delay_doubles_each_attempt(self, mock_sleep, _mock_rand):
         """With jitter=True but uniform returning 0.0, delays equal base*base^n."""
 
@@ -243,7 +243,7 @@ class TestWithRetry:
         sleep_calls = [c.args[0] for c in mock_sleep.call_args_list]
         assert sleep_calls == pytest.approx([1.0, 2.0, 4.0])
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_delay_capped_at_max_delay(self, mock_sleep):
         @with_retry(
             max_attempts=5,
@@ -356,8 +356,8 @@ class TestYFinanceExtractor:
     # _fetch_single_pair – happy paths
     # ------------------------------------------------------------------
 
-    @patch("etl.extractors.yf.Ticker")
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.yf.Ticker")
+    @patch("src.etl.extractors.time.sleep")
     def test_fetch_single_pair_fast_info_success(self, _sleep, mock_ticker_cls):
         mock_ticker_cls.return_value = self._make_ticker_mock(last_price=18176.5)
         extractor = YFinanceExtractor()
@@ -368,8 +368,8 @@ class TestYFinanceExtractor:
         assert rate.source == "yfinance"
         assert rate.data_quality_score == pytest.approx(1.0)
 
-    @patch("etl.extractors.yf.Ticker")
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.yf.Ticker")
+    @patch("src.etl.extractors.time.sleep")
     def test_fetch_single_pair_falls_back_to_history(self, _sleep, mock_ticker_cls):
         """When fast_info.last_price is None, extractor falls back to history()."""
         import pandas as pd
@@ -384,8 +384,8 @@ class TestYFinanceExtractor:
         rate = extractor._fetch_single_pair("USD_IDR")
         assert rate.rate == pytest.approx(18200.0)
 
-    @patch("etl.extractors.yf.Ticker")
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.yf.Ticker")
+    @patch("src.etl.extractors.time.sleep")
     def test_fetch_single_pair_empty_history_raises(self, _sleep, mock_ticker_cls):
         import pandas as pd
 
@@ -398,8 +398,8 @@ class TestYFinanceExtractor:
         with pytest.raises(ValueError, match="No data returned"):
             extractor._fetch_single_pair("USD_IDR")
 
-    @patch("etl.extractors.yf.Ticker")
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.yf.Ticker")
+    @patch("src.etl.extractors.time.sleep")
     def test_fetch_single_pair_invalid_rate_raises(self, _sleep, mock_ticker_cls):
         """Negative rate from fast_info should trigger validation error."""
         mock_ticker_cls.return_value = self._make_ticker_mock(last_price=-1.0)
@@ -412,8 +412,8 @@ class TestYFinanceExtractor:
     # _fetch_single_pair – retry behaviour
     # ------------------------------------------------------------------
 
-    @patch("etl.extractors.yf.Ticker")
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.yf.Ticker")
+    @patch("src.etl.extractors.time.sleep")
     def test_retries_on_connection_error(self, mock_sleep, mock_ticker_cls):
         call_count = 0
         good_ticker = self._make_ticker_mock(last_price=18176.5)
@@ -432,8 +432,8 @@ class TestYFinanceExtractor:
         assert rate.rate == pytest.approx(18176.5)
         assert call_count == 3
 
-    @patch("etl.extractors.yf.Ticker")
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.yf.Ticker")
+    @patch("src.etl.extractors.time.sleep")
     def test_exhausts_retries_raises(self, mock_sleep, mock_ticker_cls):
         mock_ticker_cls.side_effect = requests.exceptions.Timeout("timeout")
 
@@ -446,8 +446,8 @@ class TestYFinanceExtractor:
     # fetch_rates – orchestration
     # ------------------------------------------------------------------
 
-    @patch("etl.extractors.yf.Ticker")
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.yf.Ticker")
+    @patch("src.etl.extractors.time.sleep")
     def test_fetch_rates_all_pairs_success(self, _sleep, mock_ticker_cls):
         mock_ticker_cls.return_value = self._make_ticker_mock(last_price=18176.5)
         extractor = YFinanceExtractor()
@@ -459,8 +459,8 @@ class TestYFinanceExtractor:
         assert isinstance(result["rates"], list)
         assert "fetched_at" in result
 
-    @patch("etl.extractors.yf.Ticker")
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.yf.Ticker")
+    @patch("src.etl.extractors.time.sleep")
     def test_fetch_rates_partial_failure_collects_errors(self, _sleep, mock_ticker_cls):
         """One pair fails; the rest still succeed and errors are collected."""
         call_count = 0
@@ -531,7 +531,7 @@ class TestFREDExtractor:
     # _fetch_single_pair – happy path
     # ------------------------------------------------------------------
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_fetch_single_pair_success(self, _sleep):
         extractor = FREDExtractor(api_key=self.API_KEY)
         extractor._session = MagicMock()
@@ -545,7 +545,7 @@ class TestFREDExtractor:
         assert rate.data_quality_score == pytest.approx(1.0)
         assert rate.timestamp == datetime(2025, 1, 15, tzinfo=timezone.utc)
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_fetch_single_pair_eur_idr(self, _sleep):
         extractor = FREDExtractor(api_key=self.API_KEY)
         extractor._session = MagicMock()
@@ -558,16 +558,37 @@ class TestFREDExtractor:
     # _fetch_single_pair – error handling
     # ------------------------------------------------------------------
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_fred_dot_sentinel_raises_value_error(self, _sleep):
+        """If ALL returned observations are '.', raise with the new message."""
         extractor = FREDExtractor(api_key=self.API_KEY)
         extractor._session = MagicMock()
-        extractor._session.get.return_value = _fred_response([_fred_obs(".")])
+        extractor._session.get.return_value = _fred_response(
+            [_fred_obs(".", date="2026-06-01")] * 5
+        )
 
-        with pytest.raises(ValueError, match="Missing value"):
+        with pytest.raises(ValueError, match="are missing"):
             extractor._fetch_single_pair("USD_IDR")
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
+    def test_fred_skips_incomplete_current_period(self, _sleep):
+        """
+        Current period (e.g. this month) is '.' because it hasn't closed yet;
+        extractor should fall back to the most recent period with a value.
+        """
+        extractor = FREDExtractor(api_key=self.API_KEY)
+        extractor._session = MagicMock()
+        extractor._session.get.return_value = _fred_response([
+            _fred_obs(".", date="2026-06-01"),       # current month, not closed
+            _fred_obs("16250.75", date="2026-05-01"),  # last closed month
+        ])
+
+        rate = extractor._fetch_single_pair("USD_IDR")
+
+        assert rate.rate == pytest.approx(16250.75)
+        assert rate.timestamp == datetime(2026, 5, 1, tzinfo=timezone.utc)
+
+    @patch("src.etl.extractors.time.sleep")
     def test_empty_observations_raises_value_error(self, _sleep):
         extractor = FREDExtractor(api_key=self.API_KEY)
         extractor._session = MagicMock()
@@ -576,7 +597,7 @@ class TestFREDExtractor:
         with pytest.raises(ValueError, match="No observations"):
             extractor._fetch_single_pair("USD_IDR")
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_invalid_json_raises_value_error(self, _sleep):
         extractor = FREDExtractor(api_key=self.API_KEY)
         extractor._session = MagicMock()
@@ -590,7 +611,7 @@ class TestFREDExtractor:
         with pytest.raises(ValueError, match="Invalid JSON"):
             extractor._fetch_single_pair("USD_IDR")
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_server_error_retries_then_raises(self, mock_sleep):
         extractor = FREDExtractor(api_key=self.API_KEY)
         extractor._session = MagicMock()
@@ -602,7 +623,7 @@ class TestFREDExtractor:
         # with_retry fires 3 attempts, so sleep is called 2 times
         assert mock_sleep.call_count == RETRY_CONFIG["max_attempts"] - 1
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_rate_limit_429_waits_retry_after(self, mock_sleep):
         """On 429, extractor should sleep for Retry-After seconds then retry."""
         extractor = FREDExtractor(api_key=self.API_KEY)
@@ -623,7 +644,7 @@ class TestFREDExtractor:
         mock_sleep.assert_any_call(3)
         assert rate.rate == pytest.approx(18176.50)
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_connection_error_retries(self, mock_sleep):
         extractor = FREDExtractor(api_key=self.API_KEY)
         extractor._session = MagicMock()
@@ -638,7 +659,7 @@ class TestFREDExtractor:
         assert rate.rate == pytest.approx(18176.50)
         assert mock_sleep.call_count == 2
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_malformed_date_falls_back_to_now(self, _sleep):
         extractor = FREDExtractor(api_key=self.API_KEY)
         extractor._session = MagicMock()
@@ -656,7 +677,7 @@ class TestFREDExtractor:
     # fetch_rates – orchestration
     # ------------------------------------------------------------------
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_fetch_rates_both_pairs_success(self, _sleep):
         extractor = FREDExtractor(api_key=self.API_KEY)
         extractor._session = MagicMock()
@@ -668,7 +689,7 @@ class TestFREDExtractor:
         assert len(result["rates"]) == 2
         assert result["errors"] == []
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_fetch_rates_partial_failure(self, _sleep):
         extractor = FREDExtractor(api_key=self.API_KEY)
         extractor._session = MagicMock()
@@ -736,8 +757,8 @@ class TestResponseSchema:
     REQUIRED_RATE_KEYS = {"pair", "rate", "timestamp", "source", "fetched_at",
                           "data_quality_score"}
 
-    @patch("etl.extractors.yf.Ticker")
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.yf.Ticker")
+    @patch("src.etl.extractors.time.sleep")
     def test_yfinance_response_schema(self, _sleep, mock_ticker_cls):
         import pandas as pd
 
@@ -753,7 +774,7 @@ class TestResponseSchema:
         for rate_entry in result["rates"]:
             assert self.REQUIRED_RATE_KEYS.issubset(rate_entry.keys())
 
-    @patch("etl.extractors.time.sleep")
+    @patch("src.etl.extractors.time.sleep")
     def test_fred_response_schema(self, _sleep):
         extractor = FREDExtractor(api_key="key")
         extractor._session = MagicMock()

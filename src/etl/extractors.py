@@ -53,14 +53,22 @@ YFINANCE_TICKER_MAP: Dict[str, str] = {
     "JPY_IDR": "JPYIDR=X",
 }
 
-# FRED series IDs for IDR pairs (only USD and EUR available)
+# FRED series IDs for IDR pairs.
+#
+# IMPORTANT: FRED does not publish a direct EUR/IDR series. The mapping below
+# only includes USD_IDR (FRED series "DEXINUS" = Indonesian Rupiahs to One
+# U.S. Dollar, daily, noon buying rate from the Federal Reserve). EUR_IDR is
+# intentionally NOT mapped — requesting it from FREDExtractor will be skipped
+# as "unsupported" (see SUPPORTED_PAIRS / _filter_supported_pairs).
+#
+# If EUR_IDR via FRED becomes a hard requirement, it must be derived
+# (e.g. EUR_USD * USD_IDR) — that is out of scope for this extractor, which
+# maps 1 pair -> 1 FRED series.
 FRED_SERIES_MAP: Dict[str, str] = {
-    "USD_IDR": "DEXSIUS",   # actually SGD/USD — note: FRED does not publish IDR directly;
-    # Replace with real series IDs once confirmed, e.g. "CCUSSP02IDM650N"
-    "EUR_IDR": "DEXSDUS",   # placeholder — update with correct FRED series
+    "USD_IDR": "CCUSMA02IDM618N",   # Indonesian Rupiahs to One U.S. Dollar (daily)
 }
 
-FRED_BASE_URL = "https://api.stlouisfed.org/fred"
+FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
 # Validation bounds per pair  (rate > 0 AND rate < 100_000 as per spec)
 RATE_BOUNDS: Dict[str, tuple[float, float]] = {
@@ -459,9 +467,19 @@ class YFinanceExtractor(ExchangeRateExtractor):
 
 class FREDExtractor(ExchangeRateExtractor):
     """
-    Extracts exchange rates from the Federal Reserve FRED API.
+    Extracts monthly/annual exchange rate aggregates from the Federal
+    Reserve FRED API.
 
-    Supports ``USD_IDR`` and ``EUR_IDR`` (the only pairs published by FRED).
+    Project decision: **yfinance covers daily rates**; **FRED covers
+    monthly/annual aggregates** for longer-horizon trend analysis. This
+    extractor therefore requests FRED's ``frequency``-aggregated endpoint
+    (default ``frequency="m"``, ``aggregation_method="avg"``) rather than the
+    raw daily series.
+
+    Supports ``USD_IDR`` only — the sole IDR pair FRED publishes directly
+    (underlying daily series ``DEXINUS``, aggregated to monthly/annual here).
+    ``EUR_IDR`` is not available from FRED and will be skipped with a warning
+    if requested.
 
     Configuration
     -------------
@@ -469,33 +487,55 @@ class FREDExtractor(ExchangeRateExtractor):
 
     Example
     -------
-    >>> extractor = FREDExtractor()
+    >>> extractor = FREDExtractor()  # defaults to monthly averages
     >>> result = extractor.fetch_rates(["USD_IDR"])
     >>> result["source"]
     'fred'
+
+    >>> annual = FREDExtractor(frequency="a", aggregation_method="eop")
+    >>> annual.fetch_rates(["USD_IDR"])
     """
 
     SUPPORTED_PAIRS: List[str] = list(FRED_SERIES_MAP.keys())
 
-    def __init__(self, FRED_API_KEY: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        frequency: str = "m",
+        aggregation_method: str = "avg",
+    ) -> None:
         """
         Parameters
         ----------
-        FRED_API_KEY:
+        api_key:
             FRED API key.  Falls back to the ``FRED_API_KEY`` environment
             variable when not supplied directly.
+        frequency:
+            FRED ``frequency`` aggregation code applied to the underlying
+            daily series. Per project decision, **FRED is used for
+            monthly/annual aggregates** while yfinance covers daily rates.
+            Common values: ``"m"`` (monthly, default), ``"q"`` (quarterly),
+            ``"a"`` (annual). See:
+            https://fred.stlouisfed.org/docs/api/fred/series_observations.html
+        aggregation_method:
+            How FRED aggregates the daily series into the requested
+            ``frequency``. One of ``"avg"`` (default), ``"sum"``, ``"eop"``
+            (end-of-period). For exchange rates, ``"avg"`` or ``"eop"`` are
+            most meaningful.
 
         Raises
         ------
         EnvironmentError
             If no API key is available from either source.
         """
-        self._api_key = FRED_API_KEY or os.getenv("FRED_API_KEY")
+        self._api_key = api_key or os.getenv("FRED_API_KEY")
         if not self._api_key:
             raise EnvironmentError(
                 "FRED API key is required. "
-                "Set the FRED_API_KEY environment variable or pass FRED_API_KEY= to FREDExtractor()."
+                "Set the FRED_API_KEY environment variable or pass api_key= to FREDExtractor()."
             )
+        self._frequency = frequency
+        self._aggregation_method = aggregation_method
         self._session = requests.Session()
         self._session.headers.update({"Accept": "application/json"})
 
@@ -538,7 +578,13 @@ class FREDExtractor(ExchangeRateExtractor):
             "api_key": self._api_key,
             "file_type": "json",
             "sort_order": "desc",
-            "limit": 1,
+            # Fetch a few recent periods: the most recent one is often "."
+            # because the current (incomplete) month/quarter/year hasn't
+            # finished yet, so FRED has nothing to aggregate. We pick the
+            # first period that actually has a value.
+            "limit": 5,
+            "frequency": self._frequency,
+            "aggregation_method": self._aggregation_method,
         }
 
         response = self._session.get(
@@ -573,14 +619,23 @@ class FREDExtractor(ExchangeRateExtractor):
                 f"[fred] No observations returned for series {series_id} ({pair})."
             )
 
-        latest = observations[0]
-        raw_value = latest.get("value", ".")
+        # Walk observations newest-first, skipping incomplete-period "."
+        # sentinels (e.g. the current month before it has closed).
+        latest = None
+        raw_value = "."
+        for obs in observations:
+            val = obs.get("value", ".")
+            if val != ".":
+                latest = obs
+                raw_value = val
+                break
 
-        # FRED uses "." as a missing-value sentinel
-        if raw_value == ".":
+        if latest is None:
+            newest_date = observations[0].get("date")
             raise ValueError(
-                f"[fred] Missing value ('.') for series {series_id} ({pair}) "
-                f"on date {latest.get('date')}."
+                f"[fred] All {len(observations)} most recent observations for "
+                f"series {series_id} ({pair}) are missing ('.'). "
+                f"Newest attempted date: {newest_date}."
             )
 
         rate_float, quality = validate_rate(pair, raw_value)
