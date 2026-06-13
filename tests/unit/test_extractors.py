@@ -43,7 +43,7 @@ import requests
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from src.src.etl.extractors import (
+from src.etl.extractors import (
     DEFAULT_BOUNDS,
     FRED_BASE_URL,
     RATE_BOUNDS,
