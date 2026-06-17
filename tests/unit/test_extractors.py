@@ -27,6 +27,14 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
+
+# ---------------------------------------------------------------------------
+# Module under test
+# ---------------------------------------------------------------------------
+# We import from the source tree; adjust sys.path if running outside a
+# properly installed package (e.g. bare pytest invocation at repo root).
+import sys
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
@@ -35,12 +43,6 @@ from unittest.mock import MagicMock, Mock, call, patch
 import pytest
 import requests
 
-# ---------------------------------------------------------------------------
-# Module under test
-# ---------------------------------------------------------------------------
-# We import from the source tree; adjust sys.path if running outside a
-# properly installed package (e.g. bare pytest invocation at repo root).
-import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).parents[2] / "src"))
 
 from src.etl.extractors import (
@@ -72,9 +74,7 @@ def _fred_response(observations: list[dict], status_code: int = 200) -> Mock:
     resp.json.return_value = {"observations": observations}
     resp.raise_for_status = Mock()
     if status_code >= 400:
-        resp.raise_for_status.side_effect = requests.exceptions.HTTPError(
-            response=resp
-        )
+        resp.raise_for_status.side_effect = requests.exceptions.HTTPError(response=resp)
     return resp
 
 
@@ -85,6 +85,7 @@ def _fred_obs(value: str = "18176.50", date: str = "2025-01-15") -> dict:
 # ---------------------------------------------------------------------------
 # validate_rate
 # ---------------------------------------------------------------------------
+
 
 class TestValidateRate:
     """Unit tests for the standalone validate_rate() helper."""
@@ -160,6 +161,7 @@ class TestValidateRate:
 # ---------------------------------------------------------------------------
 # with_retry decorator
 # ---------------------------------------------------------------------------
+
 
 class TestWithRetry:
     """Unit tests for the with_retry() exponential-backoff decorator."""
@@ -276,6 +278,7 @@ class TestWithRetry:
 # ExchangeRate dataclass
 # ---------------------------------------------------------------------------
 
+
 class TestExchangeRate:
     def test_to_dict_contains_required_keys(self):
         er = ExchangeRate(
@@ -306,11 +309,18 @@ class TestExchangeRate:
 # ExtractionResult dataclass
 # ---------------------------------------------------------------------------
 
+
 class TestExtractionResult:
     def test_to_dict_canonical_structure(self):
         rates = [
-            ExchangeRate("USD_IDR", 18176.5, FIXED_NOW, "yfinance",
-                         fetched_at=FIXED_NOW, data_quality_score=1.0)
+            ExchangeRate(
+                "USD_IDR",
+                18176.5,
+                FIXED_NOW,
+                "yfinance",
+                fetched_at=FIXED_NOW,
+                data_quality_score=1.0,
+            )
         ]
         result = ExtractionResult(rates=rates, fetched_at=FIXED_NOW, source="yfinance")
         d = result.to_dict()
@@ -322,8 +332,7 @@ class TestExtractionResult:
 
     def test_errors_populated(self):
         result = ExtractionResult(
-            rates=[], fetched_at=FIXED_NOW, source="fred",
-            errors=["[fred] oops"]
+            rates=[], fetched_at=FIXED_NOW, source="fred", errors=["[fred] oops"]
         )
         assert result.to_dict()["errors"] == ["[fred] oops"]
 
@@ -331,6 +340,7 @@ class TestExtractionResult:
 # ---------------------------------------------------------------------------
 # YFinanceExtractor
 # ---------------------------------------------------------------------------
+
 
 class TestYFinanceExtractor:
     """Tests for YFinanceExtractor using mocked yfinance."""
@@ -385,9 +395,7 @@ class TestYFinanceExtractor:
 
         idx = pd.DatetimeIndex([pd.Timestamp("2025-01-15", tz="UTC")])
         hist = pd.DataFrame({"Close": [18200.0]}, index=idx)
-        mock_ticker_cls.return_value = self._make_ticker_mock(
-            last_price=None, history_df=hist
-        )
+        mock_ticker_cls.return_value = self._make_ticker_mock(last_price=None, history_df=hist)
 
         extractor = YFinanceExtractor()
         rate = extractor._fetch_single_pair("USD_IDR")
@@ -460,9 +468,16 @@ class TestYFinanceExtractor:
     def test_fetch_rates_all_pairs_success(self, _sleep, mock_ticker_cls):
         mock_ticker_cls.return_value = self._make_ticker_mock(last_price=18176.5)
         extractor = YFinanceExtractor()
-        result = extractor.fetch_rates([
-            "USD_IDR", "EUR_IDR", "GBP_IDR", "JPY_IDR", "SGD_IDR", "AUD_IDR",
-        ])
+        result = extractor.fetch_rates(
+            [
+                "USD_IDR",
+                "EUR_IDR",
+                "GBP_IDR",
+                "JPY_IDR",
+                "SGD_IDR",
+                "AUD_IDR",
+            ]
+        )
 
         # JPY_IDR will likely trigger quality=0.6 since 18176.5 >> 250 — that's
         # fine, we just verify structure and that all 6 are attempted.
@@ -508,13 +523,19 @@ class TestYFinanceExtractor:
 
     def test_supported_pairs_contains_all_six(self):
         assert set(YFinanceExtractor.SUPPORTED_PAIRS) == {
-            "USD_IDR", "EUR_IDR", "GBP_IDR", "JPY_IDR", "SGD_IDR", "AUD_IDR",
+            "USD_IDR",
+            "EUR_IDR",
+            "GBP_IDR",
+            "JPY_IDR",
+            "SGD_IDR",
+            "AUD_IDR",
         }
 
 
 # ---------------------------------------------------------------------------
 # FREDExtractor
 # ---------------------------------------------------------------------------
+
 
 class TestFREDExtractor:
     """Tests for FREDExtractor using mocked requests.Session."""
@@ -590,10 +611,12 @@ class TestFREDExtractor:
         """
         extractor = FREDExtractor(api_key=self.API_KEY)
         extractor._session = MagicMock()
-        extractor._session.get.return_value = _fred_response([
-            _fred_obs(".", date="2026-06-01"),       # current month, not closed
-            _fred_obs("16250.75", date="2026-05-01"),  # last closed month
-        ])
+        extractor._session.get.return_value = _fred_response(
+            [
+                _fred_obs(".", date="2026-06-01"),  # current month, not closed
+                _fred_obs("16250.75", date="2026-05-01"),  # last closed month
+            ]
+        )
 
         rate = extractor._fetch_single_pair("USD_IDR")
 
@@ -738,8 +761,8 @@ class TestFREDExtractor:
 # get_extractor factory
 # ---------------------------------------------------------------------------
 
-class TestGetExtractor:
 
+class TestGetExtractor:
     def test_returns_yfinance_extractor(self):
         extractor = get_extractor("yfinance")
         assert isinstance(extractor, YFinanceExtractor)
@@ -762,12 +785,12 @@ class TestGetExtractor:
 # Response schema contract
 # ---------------------------------------------------------------------------
 
+
 class TestResponseSchema:
     """Verify fetch_rates() output always conforms to the ADR-001 schema."""
 
     REQUIRED_TOP_KEYS = {"rates", "fetched_at", "source", "errors"}
-    REQUIRED_RATE_KEYS = {"pair", "rate", "timestamp", "source", "fetched_at",
-                          "data_quality_score"}
+    REQUIRED_RATE_KEYS = {"pair", "rate", "timestamp", "source", "fetched_at", "data_quality_score"}
 
     @patch("src.etl.extractors.yf.Ticker")
     @patch("src.etl.extractors.time.sleep")

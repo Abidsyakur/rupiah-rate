@@ -74,6 +74,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 
+
 def _env_float(key: str, default: float) -> float:
     """Read a float from an environment variable, falling back to default."""
     raw = os.getenv(key)
@@ -84,7 +85,9 @@ def _env_float(key: str, default: float) -> float:
     except ValueError:
         logger.warning(
             "Invalid value %r for env var %s — using default %.4f",
-            raw, key, default,
+            raw,
+            key,
+            default,
         )
         return default
 
@@ -131,14 +134,10 @@ class ValidatorConfig:
             else _env_float("VALIDATOR_FRESHNESS_HOURS", 2.0)
         )
         self.rate_min: float = (
-            rate_min
-            if rate_min is not None
-            else _env_float("VALIDATOR_RATE_MIN", 0.01)
+            rate_min if rate_min is not None else _env_float("VALIDATOR_RATE_MIN", 0.01)
         )
         self.rate_max: float = (
-            rate_max
-            if rate_max is not None
-            else _env_float("VALIDATOR_RATE_MAX", 1_000_000.0)
+            rate_max if rate_max is not None else _env_float("VALIDATOR_RATE_MAX", 1_000_000.0)
         )
         self.fail_on_anomaly: bool = (
             fail_on_anomaly
@@ -146,9 +145,7 @@ class ValidatorConfig:
             else _env_bool("VALIDATOR_FAIL_ON_ANOMALY", False)
         )
         self.fail_on_null: bool = (
-            fail_on_null
-            if fail_on_null is not None
-            else _env_bool("VALIDATOR_FAIL_ON_NULL", True)
+            fail_on_null if fail_on_null is not None else _env_bool("VALIDATOR_FAIL_ON_NULL", True)
         )
 
     def __repr__(self) -> str:
@@ -167,6 +164,7 @@ class ValidatorConfig:
 # ---------------------------------------------------------------------------
 # ValidationResult
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ValidationResult:
@@ -225,6 +223,7 @@ class ValidationResult:
 # Abstract base
 # ---------------------------------------------------------------------------
 
+
 class BaseValidator(ABC):
     """
     Abstract base class for all validators in the pipeline.
@@ -237,9 +236,7 @@ class BaseValidator(ABC):
         self.config: ValidatorConfig = config or ValidatorConfig()
 
     @abstractmethod
-    def validate(
-        self, data: Union[pd.DataFrame, pd.Series]
-    ) -> ValidationResult:
+    def validate(self, data: Union[pd.DataFrame, pd.Series]) -> ValidationResult:
         """
         Run all validation checks on *data*.
 
@@ -266,13 +263,14 @@ class BaseValidator(ABC):
             Optional label for the data source (e.g. ``"yfinance"``).
         """
         prefix = f"[{source}] " if source else ""
-        level = logging.ERROR if not result.is_valid else (
-            logging.WARNING if result.warnings else logging.INFO
+        level = (
+            logging.ERROR
+            if not result.is_valid
+            else (logging.WARNING if result.warnings else logging.INFO)
         )
         logger.log(
             level,
-            "%sValidation complete — valid=%s quality=%.3f "
-            "errors=%d warnings=%d",
+            "%sValidation complete — valid=%s quality=%.3f " "errors=%d warnings=%d",
             prefix,
             result.is_valid,
             result.quality_score,
@@ -288,6 +286,7 @@ class BaseValidator(ABC):
 # ---------------------------------------------------------------------------
 # ExchangeRateValidator
 # ---------------------------------------------------------------------------
+
 
 class ExchangeRateValidator(BaseValidator):
     """
@@ -332,9 +331,7 @@ class ExchangeRateValidator(BaseValidator):
     # Public entry point
     # ------------------------------------------------------------------
 
-    def validate(
-        self, data: Union[pd.DataFrame, pd.Series]
-    ) -> ValidationResult:
+    def validate(self, data: Union[pd.DataFrame, pd.Series]) -> ValidationResult:
         """
         Run the full validation pipeline.
 
@@ -358,9 +355,7 @@ class ExchangeRateValidator(BaseValidator):
         if isinstance(data, pd.Series):
             data = self._series_to_dataframe(data)
         elif not isinstance(data, pd.DataFrame):
-            raise TypeError(
-                f"Expected pd.DataFrame or pd.Series, got {type(data).__name__}."
-            )
+            raise TypeError(f"Expected pd.DataFrame or pd.Series, got {type(data).__name__}.")
 
         result = ValidationResult()
 
@@ -374,10 +369,16 @@ class ExchangeRateValidator(BaseValidator):
         if data.empty:
             result.add_error("Input data is empty — nothing to validate.")
             result.quality_score = 0.0
-            result.checks_passed = {c: False for c in (
-                "null_check", "rate_range", "date_consistency",
-                "anomaly_detection", "freshness"
-            )}
+            result.checks_passed = {
+                c: False
+                for c in (
+                    "null_check",
+                    "rate_range",
+                    "date_consistency",
+                    "anomaly_detection",
+                    "freshness",
+                )
+            }
             return result
 
         # Resolve rate columns present in this particular DataFrame
@@ -471,7 +472,10 @@ class ExchangeRateValidator(BaseValidator):
 
         logger.debug(
             "Null check: %d/%d cells null (ratio=%.4f, threshold=%.4f)",
-            null_cells, total_cells, null_ratio, self.config.null_threshold,
+            null_cells,
+            total_cells,
+            null_ratio,
+            self.config.null_threshold,
         )
 
         result.details["null_count"] = int(null_cells)
@@ -571,7 +575,10 @@ class ExchangeRateValidator(BaseValidator):
 
         logger.debug(
             "Rate range check: %d/%d valid, %d out-of-range, %d bad precision",
-            valid_cells, total, out_of_range, bad_precision,
+            valid_cells,
+            total,
+            out_of_range,
+            bad_precision,
         )
         return passed, score
 
@@ -605,9 +612,7 @@ class ExchangeRateValidator(BaseValidator):
         ts_series = self._resolve_timestamp_series(data)
 
         if ts_series is None:
-            result.add_warning(
-                "Date consistency: no timestamp/date column found — skipping."
-            )
+            result.add_warning("Date consistency: no timestamp/date column found — skipping.")
             return True, 1.0
 
         # Parse to datetime
@@ -619,9 +624,7 @@ class ExchangeRateValidator(BaseValidator):
 
         unparseable = parsed.isna().sum()
         if unparseable > 0:
-            result.add_error(
-                f"Date consistency: {unparseable} unparseable date value(s)."
-            )
+            result.add_error(f"Date consistency: {unparseable} unparseable date value(s).")
             return False, 0.0
 
         passed = True
@@ -630,8 +633,7 @@ class ExchangeRateValidator(BaseValidator):
         # Chronological order (hard fail)
         if not parsed.is_monotonic_increasing:
             result.add_error(
-                "Date consistency: timestamps are not in chronological "
-                "(ascending) order."
+                "Date consistency: timestamps are not in chronological " "(ascending) order."
             )
             passed = False
             score = 0.0
@@ -639,9 +641,7 @@ class ExchangeRateValidator(BaseValidator):
         # Duplicate detection (soft warning)
         duplicates = parsed.duplicated().sum()
         if duplicates > 0:
-            result.add_warning(
-                f"Date consistency: {duplicates} duplicate timestamp(s) found."
-            )
+            result.add_warning(f"Date consistency: {duplicates} duplicate timestamp(s) found.")
             score = max(0.0, score - 0.2 * (duplicates / len(parsed)))
 
         result.details["date_min"] = str(parsed.min())
@@ -693,9 +693,7 @@ class ExchangeRateValidator(BaseValidator):
             ``True`` AND at least one anomaly was found.
         """
         if len(data) < 3:
-            result.add_warning(
-                "Anomaly detection: fewer than 3 rows — skipping statistical check."
-            )
+            result.add_warning("Anomaly detection: fewer than 3 rows — skipping statistical check.")
             return True, 1.0
 
         # Collect all numeric rate values for Z-score computation
@@ -723,14 +721,8 @@ class ExchangeRateValidator(BaseValidator):
                 max_z = max(max_z, z)
 
             if max_z > self.config.anomaly_std_dev:
-                score_val = min(
-                    max_z / (self.config.anomaly_std_dev * 2), 1.0
-                )
-                key = (
-                    str(data.index[idx])
-                    if not isinstance(idx, (int, np.integer))
-                    else str(idx)
-                )
+                score_val = min(max_z / (self.config.anomaly_std_dev * 2), 1.0)
+                key = str(data.index[idx]) if not isinstance(idx, (int, np.integer)) else str(idx)
                 anomaly_records[key] = round(score_val, 4)
 
         result.anomaly_scores = anomaly_records
@@ -743,7 +735,9 @@ class ExchangeRateValidator(BaseValidator):
 
         logger.debug(
             "Anomaly detection: %d/%d records flagged (std_dev_threshold=%.1f)",
-            anomaly_count, len(data), self.config.anomaly_std_dev,
+            anomaly_count,
+            len(data),
+            self.config.anomaly_std_dev,
         )
 
         if anomaly_count > 0:
@@ -789,9 +783,7 @@ class ExchangeRateValidator(BaseValidator):
         ts_series = self._resolve_timestamp_series(data)
 
         if ts_series is None:
-            result.add_warning(
-                "Freshness check: no timestamp column found — skipping."
-            )
+            result.add_warning("Freshness check: no timestamp column found — skipping.")
             return True, 1.0
 
         try:
@@ -815,8 +807,11 @@ class ExchangeRateValidator(BaseValidator):
         # — the caller should tune VALIDATOR_FRESHNESS_HOURS in .env
         max_age = threshold * 2
 
-        score = max(0.0, min(1.0, 1.0 - (age_hours - threshold) / threshold)) \
-            if age_hours > threshold else 1.0
+        score = (
+            max(0.0, min(1.0, 1.0 - (age_hours - threshold) / threshold))
+            if age_hours > threshold
+            else 1.0
+        )
 
         result.details["freshness_most_recent"] = most_recent.isoformat()
         result.details["freshness_age_hours"] = round(age_hours, 2)
@@ -824,7 +819,9 @@ class ExchangeRateValidator(BaseValidator):
 
         logger.debug(
             "Freshness check: most recent=%s age=%.2fh threshold=%.1fh",
-            most_recent.isoformat(), age_hours, threshold,
+            most_recent.isoformat(),
+            age_hours,
+            threshold,
         )
 
         if age_hours > threshold:
@@ -840,9 +837,7 @@ class ExchangeRateValidator(BaseValidator):
     # 6. Quality score
     # ------------------------------------------------------------------
 
-    def calculate_quality_score(
-        self, check_scores: Dict[str, float]
-    ) -> float:
+    def calculate_quality_score(self, check_scores: Dict[str, float]) -> float:
         """
         Compute the overall quality score as the unweighted average of all
         individual check scores.
@@ -876,7 +871,9 @@ class ExchangeRateValidator(BaseValidator):
         rounded = round(score, 4)
         logger.debug(
             "Quality score: %.4f (from %d checks: %s)",
-            rounded, len(check_scores), check_scores,
+            rounded,
+            len(check_scores),
+            check_scores,
         )
         return rounded
 
@@ -903,9 +900,7 @@ class ExchangeRateValidator(BaseValidator):
         df = series.reset_index()
         df.columns = pd.Index(["timestamp", "rate"])
         df = df.sort_values("timestamp").reset_index(drop=True)
-        logger.debug(
-            "Converted Series (%d rows) to DataFrame for validation.", len(df)
-        )
+        logger.debug("Converted Series (%d rows) to DataFrame for validation.", len(df))
         return df
 
     def _resolve_rate_columns(self, data: pd.DataFrame) -> List[str]:
@@ -916,9 +911,7 @@ class ExchangeRateValidator(BaseValidator):
         # Fall back to alternative column names
         return [c for c in self._ALT_RATE_COLS if c in data.columns]
 
-    def _resolve_timestamp_series(
-        self, data: pd.DataFrame
-    ) -> Optional[pd.Series]:
+    def _resolve_timestamp_series(self, data: pd.DataFrame) -> Optional[pd.Series]:
         """
         Return a Series of raw timestamp values from either a ``timestamp``
         column, a ``date`` column, or the DataFrame index (if index looks

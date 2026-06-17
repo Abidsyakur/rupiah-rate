@@ -21,9 +21,7 @@ class TrendAnalyzer:
     """Analyze exchange rate trends."""
 
     @staticmethod
-    def calculate_moving_average(
-        rates: List[float], window: int
-    ) -> List[Optional[float]]:
+    def calculate_moving_average(rates: List[float], window: int) -> List[Optional[float]]:
         """
         Calculate moving average.
 

@@ -54,6 +54,7 @@ SQLITE_URL = "sqlite://"  # pure in-memory, no file
 # Engine fixture — created once per test session
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def engine():
     """
@@ -73,6 +74,7 @@ def engine():
 # ---------------------------------------------------------------------------
 # Session fixture — fresh transaction per test
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def session(engine) -> Session:

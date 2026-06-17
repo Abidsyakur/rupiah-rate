@@ -1,7 +1,7 @@
 """Configuration management for different environments"""
 
 import os
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 class Config:
@@ -24,16 +24,19 @@ class Config:
 
 class DevelopmentConfig(Config):
     """Development configuration"""
+
     DEBUG = True
 
 
 class StagingConfig(Config):
     """Staging configuration"""
+
     pass
 
 
 class ProductionConfig(Config):
     """Production configuration"""
+
     TESTING = False
 
 

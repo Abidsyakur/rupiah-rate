@@ -1,6 +1,7 @@
 """Integration tests for complete pipeline"""
 
 import pytest
+
 from src.etl.pipeline import ETLPipeline
 
 
@@ -10,12 +11,7 @@ class TestETLPipeline:
     @pytest.fixture
     def pipeline(self):
         # Create mock components
-        return ETLPipeline(
-            extractor=None,
-            transformer=None,
-            loader=None,
-            validator=None
-        )
+        return ETLPipeline(extractor=None, transformer=None, loader=None, validator=None)
 
     def test_pipeline_initialization(self, pipeline):
         """Test pipeline can be initialized"""

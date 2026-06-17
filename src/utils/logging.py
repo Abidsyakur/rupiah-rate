@@ -12,9 +12,7 @@ def setup_logging(log_level: str = "INFO", log_file: str = None) -> logging.Logg
     logger = logging.getLogger("rupiah_rates")
     logger.setLevel(getattr(logging, log_level))
 
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
     # Console handler
     console_handler = logging.StreamHandler()
