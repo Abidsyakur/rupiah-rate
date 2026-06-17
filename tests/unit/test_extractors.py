@@ -41,7 +41,7 @@ import requests
 # We import from the source tree; adjust sys.path if running outside a
 # properly installed package (e.g. bare pytest invocation at repo root).
 import sys, pathlib
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(pathlib.Path(__file__).parents[2] / "src"))
 
 from src.etl.extractors import (
     DEFAULT_BOUNDS,
@@ -111,7 +111,16 @@ class TestValidateRate:
 
     def test_unknown_pair_uses_default_bounds(self):
         # DEFAULT_BOUNDS = (0, 100_000); any positive value < 100_000 is quality 1.0
+        # CHF_IDR is not in RATE_BOUNDS, so it falls through to DEFAULT_BOUNDS.
+        rate, quality = validate_rate("CHF_IDR", 18_000.0)
+        assert quality == 1.0
+
+    def test_gbp_idr_in_bounds(self):
         rate, quality = validate_rate("GBP_IDR", 25_000.0)
+        assert quality == 1.0
+
+    def test_aud_idr_in_bounds(self):
+        rate, quality = validate_rate("AUD_IDR", 10_500.0)
         assert quality == 1.0
 
     def test_none_raises_value_error(self):
@@ -451,12 +460,15 @@ class TestYFinanceExtractor:
     def test_fetch_rates_all_pairs_success(self, _sleep, mock_ticker_cls):
         mock_ticker_cls.return_value = self._make_ticker_mock(last_price=18176.5)
         extractor = YFinanceExtractor()
-        result = extractor.fetch_rates(["USD_IDR", "EUR_IDR", "SGD_IDR", "JPY_IDR"])
+        result = extractor.fetch_rates([
+            "USD_IDR", "EUR_IDR", "GBP_IDR", "JPY_IDR", "SGD_IDR", "AUD_IDR",
+        ])
 
-        # JPY_IDR will likely trigger quality=0.6 since 18176.5 >> 250 — that's fine,
-        # we just verify structure and that all 4 are attempted.
+        # JPY_IDR will likely trigger quality=0.6 since 18176.5 >> 250 — that's
+        # fine, we just verify structure and that all 6 are attempted.
         assert result["source"] == "yfinance"
         assert isinstance(result["rates"], list)
+        assert len(result["rates"]) == 6
         assert "fetched_at" in result
 
     @patch("src.etl.extractors.yf.Ticker")
@@ -494,9 +506,9 @@ class TestYFinanceExtractor:
     def test_get_source_name(self):
         assert YFinanceExtractor().get_source_name() == "yfinance"
 
-    def test_supported_pairs_contains_all_four(self):
+    def test_supported_pairs_contains_all_six(self):
         assert set(YFinanceExtractor.SUPPORTED_PAIRS) == {
-            "USD_IDR", "EUR_IDR", "SGD_IDR", "JPY_IDR"
+            "USD_IDR", "EUR_IDR", "GBP_IDR", "JPY_IDR", "SGD_IDR", "AUD_IDR",
         }
 
 

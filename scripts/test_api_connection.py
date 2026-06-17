@@ -43,7 +43,7 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Make src/ importable so we can reuse the real extractor classes
 # ---------------------------------------------------------------------------
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).parents[1]))
 
 # ---------------------------------------------------------------------------
 # Optional: load .env if python-dotenv is available
@@ -123,7 +123,7 @@ def test_yfinance() -> bool:
         return False
 
     extractor = YFinanceExtractor()
-    pairs = extractor.SUPPORTED_PAIRS  # USD_IDR, EUR_IDR, SGD_IDR, JPY_IDR
+    pairs = extractor.SUPPORTED_PAIRS  # USD_IDR, EUR_IDR, GBP_IDR, JPY_IDR, SGD_IDR, AUD_IDR
 
     print(f"  Testing pairs: {pairs}")
     print()
@@ -177,7 +177,7 @@ def test_fred() -> bool:
         return False
 
     pairs = extractor.SUPPORTED_PAIRS  # currently: ["USD_IDR"]
-    print(f"  Testing pairs: {pairs}  (FRED series: CCUSMA02IDM618N, "
+    print(f"  Testing pairs: {pairs}  (FRED series: DEXINUS, "
           f"frequency={extractor._frequency!r}, "
           f"aggregation_method={extractor._aggregation_method!r})")
     print("  Note: FRED = monthly/annual aggregates (project decision); "
