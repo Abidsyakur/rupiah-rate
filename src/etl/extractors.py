@@ -65,6 +65,7 @@ YFINANCE_TICKER_MAP: Dict[str, str] = {
 # (e.g. EUR_USD * USD_IDR) — that is out of scope for this extractor, which
 # maps 1 pair -> 1 FRED series.
 FRED_SERIES_MAP: Dict[str, str] = {
+    "EUR_IDR": "DEXEUIDR",
     "USD_IDR": "CCUSMA02IDM618N",   # Indonesian Rupiahs to One U.S. Dollar (daily)
 }
 

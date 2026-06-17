@@ -1,43 +1,83 @@
-# Core
-python-dotenv==1.0.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
+# ============================================
+# Rupiah Exchange Rate Intelligence Platform
+# Unified Requirements (Pipeline + Airflow)
+# ============================================
+# SQLAlchemy: 1.4.51 (compatible with both pipeline and Airflow 2.10.0)
+# Python: 3.9+
+# One environment for everything!
 
-# Exchange Rate Data Sources
-yfinance==0.2.33          # Yfinance API
-requests==2.31.0          # HTTP requests with retry support
+# ============================================
+# CORE DATABASE (SQLAlchemy 1.4 - Compatible)
+# ============================================
+SQLAlchemy==1.4.51          # ORM - Compatible with Airflow 2.10.0
+psycopg2-binary==2.9.9      # PostgreSQL adapter
+alembic==1.13.1             # Database migrations (Airflow 2.10.0 requires >=1.13.1)
 
-# Data Processing
-pandas==2.1.3
-numpy==1.26.2
+# ============================================
+# APACHE AIRFLOW
+# ============================================
+apache-airflow==2.10.0      # Airflow orchestration
+apache-airflow-providers-postgres==5.10.0  # PostgreSQL provider
 
-# Database
-psycopg2-binary==2.9.9
-sqlalchemy==2.0.23
-alembic==1.13.0
+# ============================================
+# DATA PROCESSING
+# ============================================
+pandas==2.1.3               # Data manipulation and analysis
+numpy==1.26.2               # Numerical computing
 
-# Airflow (Orchestration)
-apache-airflow==2.7.2
-apache-airflow-providers-postgres==5.10.0
+# ============================================
+# API DATA SOURCES
+# ============================================
+yfinance==0.2.32            # Free stock/forex data from Yahoo Finance
+fredapi==0.5.1              # Federal Reserve Economic Data API
+requests==2.31.0            # HTTP library for API calls
 
-# dbt (Transformations)
-dbt-postgres==1.7.0
-dbt-core==1.7.0
+# ============================================
+# ENVIRONMENT & CONFIG
+# ============================================
+python-dotenv==1.0.0        # Load environment variables from .env
 
-# Logging & Monitoring
-python-json-logger==2.0.7
+# ============================================
+# TESTING
+# ============================================
+pytest==7.4.3               # Testing framework
+pytest-cov==4.1.0           # Code coverage for pytest
+pytest-asyncio==0.21.1      # Async test support
 
-# Testing
-pytest==7.4.3
-pytest-cov==4.1.0
-pytest-mock==3.12.0
+# ============================================
+# CODE QUALITY
+# ============================================
+flake8==6.1.0               # Style guide enforcement
+black==23.12.0              # Code formatter
+mypy==1.7.1                 # Static type checker
+isort==5.13.2               # Import sorting
 
-# Code Quality
-black==23.12.0
-flake8==6.1.0
-isort==5.13.2
-mypy==1.7.1
+# ============================================
+# LOGGING & MONITORING
+# ============================================
+python-json-logger==2.0.7   # JSON structured logging
 
-# Development
-ipython==8.18.1
-jupyter==1.0.0
+# ============================================
+# UTILITIES
+# ============================================
+python-dateutil==2.8.2      # Date utilities
+pytz==2023.3                # Timezone support
+tenacity==8.2.3             # Retry library for robust error handling
+
+# ============================================
+# NOTES
+# ============================================
+# Why SQLAlchemy 1.4.51?
+# - Fully compatible with Airflow 2.10.0
+# - Good for both pipeline and orchestration
+# - Single environment for everything
+# - Simpler setup, less complexity
+#
+# Install with:
+#   pip install -r requirements.txt
+#
+# Create environment:
+#   python -m venv venv
+#   source venv/bin/activate  (Linux/macOS)
+#   venv\Scripts\activate     (Windows)
+#   pip install -r requirements.txt

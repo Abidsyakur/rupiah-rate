@@ -3,14 +3,19 @@ tests/unit/test_database.py
 ============================
 Unit tests for src/models/database.py (ADR-002).
 
-SQLAlchemy 2.0 patterns used in this test file
+SQLAlchemy 1.4 patterns used in this test file
 -----------------------------------------------
-- ``session.scalars(select(...))``     instead of ``session.query(...)``
-- ``select(Model).where(...)``         instead of ``filter_by(...)``
-- ``select(func.count()).select_from`` for COUNT queries
-- ``Session(bind=connection)``         replaced by ``Session(connection)``  (2.0)
-- Relationships are plain ``list``     — no more ``.all()`` on dynamic proxies
-- ``session.get(Model, pk)``           for PK lookups (2.0 preferred API)
+- ``session.query(Model).filter(...)``   legacy ORM query API (1.4/2.0 compatible)
+- ``session.query(Model).get(pk)``       for PK lookups (1.4 style;
+  deprecated-but-functional in 2.0, removed entirely in 2.x's strict mode)
+- ``session.query(Model).count()``       for COUNT queries
+- ``Session(bind=connection)``           binds session to an open connection
+- Relationships are plain ``list``       (lazy="select", not "dynamic")
+
+Note: SQLAlchemy is pinned to 1.4.51 project-wide (see requirements.txt)
+for Apache Airflow compatibility. ``select()`` / ``session.scalars()``
+(2.0 opt-in style) are intentionally NOT used here so this test suite
+runs unmodified against the pinned 1.4 version.
 
 SQLite notes
 ------------
@@ -51,7 +56,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy import func, inspect, select, text
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -195,20 +200,21 @@ def _seed_base(session: Session) -> tuple[Currency, Currency, ApiSource]:
 
 
 # ---------------------------------------------------------------------------
-# 2.0 query helpers (keeps test bodies clean)
+# Query helpers (SQLAlchemy 1.4 compatible — uses legacy query() API since
+# session.scalars() with a Select construct was only added in 2.0)
 # ---------------------------------------------------------------------------
 
 def _one(session: Session, model, **kwargs):
-    """Return the single row matching the given kwargs (2.0 select style)."""
-    stmt = select(model)
+    """Return the single row matching the given kwargs (1.4 query() style)."""
+    q = session.query(model)
     for col, val in kwargs.items():
-        stmt = stmt.where(getattr(model, col) == val)
-    return session.scalars(stmt).one()
+        q = q.filter(getattr(model, col) == val)
+    return q.one()
 
 
 def _count(session: Session, model) -> int:
     """Return the total number of rows in the table."""
-    return session.scalar(select(func.count()).select_from(model))
+    return session.query(model).count()
 
 
 # ===========================================================================
@@ -342,9 +348,11 @@ class TestApiSourceModel:
     def test_all_pipeline_sources_insertable(self, session, source_name):
         session.add(ApiSource(source_name=source_name, is_active=True))
         session.flush()
-        result = session.scalars(
-            select(ApiSource).where(ApiSource.source_name == source_name)
-        ).one()
+        result = (
+            session.query(ApiSource)
+            .filter(ApiSource.source_name == source_name)
+            .one()
+        )
         assert result.source_name == source_name
 
 
@@ -360,7 +368,7 @@ class TestExchangeRateModel:
         session.add(er)
         session.flush()
 
-        fetched = session.get(ExchangeRate, er.rate_id)
+        fetched = session.query(ExchangeRate).get(er.rate_id)
         assert fetched.rate == pytest.approx(Decimal("18176.50"), rel=1e-4)
         assert fetched.from_currency_id == usd.currency_id
         assert fetched.to_currency_id == idr.currency_id
@@ -389,7 +397,7 @@ class TestExchangeRateModel:
         session.add(er)
         session.flush()
 
-        fetched = session.get(ExchangeRate, er.rate_id)
+        fetched = session.query(ExchangeRate).get(er.rate_id)
         assert fetched.data_quality_score is None
 
     def test_exchange_rate_future_timestamp_accepted(self, session):
@@ -451,7 +459,7 @@ class TestApiCallModel:
         session.add(call)
         session.flush()
 
-        fetched = session.get(ApiCall, call.call_id)
+        fetched = session.query(ApiCall).get(call.call_id)
         assert fetched.status == "SUCCESS"
         assert fetched.error_message is None
         assert fetched.records_fetched == 4
@@ -466,7 +474,7 @@ class TestApiCallModel:
         session.add(call)
         session.flush()
 
-        fetched = session.get(ApiCall, call.call_id)
+        fetched = session.query(ApiCall).get(call.call_id)
         assert fetched.status == status
 
     def test_api_call_error_message_populated_on_failure(self, session):
@@ -482,7 +490,7 @@ class TestApiCallModel:
         session.add(call)
         session.flush()
 
-        fetched = session.get(ApiCall, call.call_id)
+        fetched = session.query(ApiCall).get(call.call_id)
         assert "ConnectionError" in fetched.error_message
 
     def test_api_call_insert_only_no_updated_at(self):
@@ -501,7 +509,7 @@ class TestApiCallModel:
         session.add(call)
         session.flush()
 
-        fetched = session.get(ApiCall, call.call_id)
+        fetched = session.query(ApiCall).get(call.call_id)
         assert fetched.records_fetched is None
         assert fetched.records_valid is None
         assert fetched.records_invalid is None
@@ -762,7 +770,7 @@ class TestDataQualityMetricModel:
         session.add(m)
         session.flush()
 
-        fetched = session.get(DataQualityMetric, m.metric_id)
+        fetched = session.query(DataQualityMetric).get(m.metric_id)
         assert fetched.check_name == "NULL_CHECK"
         assert fetched.check_passed is True
         assert fetched.anomaly_score is None
@@ -798,7 +806,7 @@ class TestDataQualityMetricModel:
         session.add(m)
         session.flush()
 
-        fetched = session.get(DataQualityMetric, m.metric_id)
+        fetched = session.query(DataQualityMetric).get(m.metric_id)
         assert fetched.anomaly_score == Decimal("0.85")
 
     def test_metric_repr(self, session):
@@ -824,7 +832,7 @@ class TestDailySnapshotModel:
         session.add(snap)
         session.flush()
 
-        fetched = session.get(DailySnapshot, snap.snapshot_id)
+        fetched = session.query(DailySnapshot).get(snap.snapshot_id)
         assert fetched.snapshot_date == FIXED_DATE
         assert fetched.rate_open  == Decimal("18100.0")
         assert fetched.rate_high  == Decimal("18300.0")
@@ -842,7 +850,7 @@ class TestDailySnapshotModel:
         session.add(snap)
         session.flush()
 
-        fetched = session.get(DailySnapshot, snap.snapshot_id)
+        fetched = session.query(DailySnapshot).get(snap.snapshot_id)
         assert fetched.is_anomaly is True
         assert fetched.anomaly_level == "WARNING"
 
@@ -879,7 +887,7 @@ class TestDailySnapshotModel:
         session.add(snap)
         session.flush()
 
-        fetched = session.get(DailySnapshot, snap.snapshot_id)
+        fetched = session.query(DailySnapshot).get(snap.snapshot_id)
         assert fetched.rate_ma7 is None
         assert fetched.pct_change is None
 
@@ -986,9 +994,11 @@ class TestGetSession:
             sess.add(make_currency("NZD", "New Zealand Dollar"))
 
         with get_session(eng) as sess:
-            result = sess.scalars(
-                select(Currency).where(Currency.code == "NZD")
-            ).one_or_none()
+            result = (
+                sess.query(Currency)
+                .filter(Currency.code == "NZD")
+                .one_or_none()
+            )
             assert result is not None
 
         Base.metadata.drop_all(eng)
@@ -1004,9 +1014,11 @@ class TestGetSession:
                 raise SQLAlchemyError("simulated DB error")
 
         with get_session(eng) as sess:
-            result = sess.scalars(
-                select(Currency).where(Currency.code == "MXN")
-            ).one_or_none()
+            result = (
+                sess.query(Currency)
+                .filter(Currency.code == "MXN")
+                .one_or_none()
+            )
             assert result is None
 
         Base.metadata.drop_all(eng)
@@ -1022,9 +1034,11 @@ class TestGetSession:
                 raise RuntimeError("unexpected")
 
         with get_session(eng) as sess:
-            result = sess.scalars(
-                select(Currency).where(Currency.code == "BRL")
-            ).one_or_none()
+            result = (
+                sess.query(Currency)
+                .filter(Currency.code == "BRL")
+                .one_or_none()
+            )
             assert result is None
 
         Base.metadata.drop_all(eng)

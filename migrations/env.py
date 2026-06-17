@@ -22,9 +22,9 @@ from alembic import context
 # ---------------------------------------------------------------------------
 # Add src/ to sys.path so models can be imported
 # ---------------------------------------------------------------------------
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from src.utils.database import Base  # noqa: E402
+from models.database import Base  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Alembic Config object
