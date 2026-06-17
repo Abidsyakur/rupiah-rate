@@ -6,8 +6,8 @@ Exchange rate extractors for Yfinance and FRED API.
 Architecture Reference: ADR-001
   - Exponential backoff retry strategy (max 3 attempts)
   - Connection timeout: 10s, Read timeout: 30s
-  - Supported pairs: USD_IDR, EUR_IDR, SGD_IDR, JPY_IDR
-  - Sources: yfinance (all 4 pairs), FRED (USD_IDR, EUR_IDR only)
+  - Supported pairs: USD_IDR, EUR_IDR, GBP_IDR, JPY_IDR, SGD_IDR, AUD_IDR
+  - Sources: yfinance (all 6 pairs), FRED (USD_IDR only)
 """
 
 from __future__ import annotations
@@ -49,22 +49,27 @@ TIMEOUT = (10, 30)  # (connect, read) seconds
 YFINANCE_TICKER_MAP: Dict[str, str] = {
     "USD_IDR": "USDIDR=X",
     "EUR_IDR": "EURIDR=X",
-    "SGD_IDR": "SGDIDR=X",
+    "GBP_IDR": "GBPIDR=X",
     "JPY_IDR": "JPYIDR=X",
+    "SGD_IDR": "SGDIDR=X",
+    "AUD_IDR": "AUDIDR=X",
 }
 
 # FRED series IDs for IDR pairs.
 #
-# IMPORTANT: FRED does not publish a direct EUR/IDR series. The mapping below
-# only includes USD_IDR (FRED series "DEXINUS" = Indonesian Rupiahs to One
-# U.S. Dollar, daily, noon buying rate from the Federal Reserve). EUR_IDR is
-# intentionally NOT mapped — requesting it from FREDExtractor will be skipped
-# as "unsupported" (see SUPPORTED_PAIRS / _filter_supported_pairs).
+# IMPORTANT: FRED does not publish direct IDR cross-rate series for every
+# currency. Only USD_IDR has a dedicated series (DEXINUS = Indonesian
+# Rupiahs to One U.S. Dollar, daily, noon buying rate from the Federal
+# Reserve). EUR_IDR, GBP_IDR, JPY_IDR, SGD_IDR, AUD_IDR are intentionally
+# NOT mapped here — requesting them from FREDExtractor will be skipped as
+# "unsupported" (see SUPPORTED_PAIRS / _filter_supported_pairs). All six
+# pairs ARE available daily via YFinanceExtractor.
 #
-# If EUR_IDR via FRED becomes a hard requirement, it must be derived
-# (e.g. EUR_USD * USD_IDR) — that is out of scope for this extractor, which
-# maps 1 pair -> 1 FRED series.
+# If a FRED-sourced cross-rate becomes a hard requirement, it must be
+# derived (e.g. GBP_USD * USD_IDR) — that is out of scope for this
+# extractor, which maps 1 pair -> 1 FRED series.
 FRED_SERIES_MAP: Dict[str, str] = {
+    "EUR_IDR": "DEXEUIDR",
     "USD_IDR": "CCUSMA02IDM618N",   # Indonesian Rupiahs to One U.S. Dollar (daily)
 }
 
@@ -74,8 +79,10 @@ FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 RATE_BOUNDS: Dict[str, tuple[float, float]] = {
     "USD_IDR": (10_000.0, 25_000.0),
     "EUR_IDR": (10_000.0, 30_000.0),
-    "SGD_IDR": (8_000.0,  20_000.0),
+    "GBP_IDR": (15_000.0, 35_000.0),
     "JPY_IDR": (50.0,     250.0),
+    "SGD_IDR": (8_000.0,  20_000.0),
+    "AUD_IDR": (8_000.0,  20_000.0),
 }
 
 DEFAULT_BOUNDS = (0.0, 100_000.0)  # fallback for unknown pairs
@@ -347,8 +354,8 @@ class YFinanceExtractor(ExchangeRateExtractor):
     """
     Extracts exchange rates using the ``yfinance`` library.
 
-    Supports all four IDR pairs defined in ADR-001:
-    ``USD_IDR``, ``EUR_IDR``, ``SGD_IDR``, ``JPY_IDR``.
+    Supports all six IDR pairs:
+    ``USD_IDR``, ``EUR_IDR``, ``GBP_IDR``, ``JPY_IDR``, ``SGD_IDR``, ``AUD_IDR``.
 
     Example
     -------

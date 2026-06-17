@@ -7,11 +7,16 @@ rupiah-exchange-rate-intelligence test suite.
 Responsibilities
 ----------------
 - Add ``src/`` to ``sys.path`` once, for every test module
-  (so ``from utils.database import ...`` and
+  (so ``from models.database import ...`` and
   ``from etl.extractors import ...`` work without per-file hacks).
 - Provide a session-scoped in-memory SQLite engine + schema.
 - Provide a function-scoped, transaction-isolated SQLAlchemy session
-  (SQLAlchemy 2.0 style) for any test that needs DB access.
+  for any test that needs DB access.
+
+Note: SQLAlchemy is pinned to 1.4.x project-wide (see requirements.txt) for
+Apache Airflow compatibility. The fixtures below work identically on 1.4
+and 2.0 — they only use APIs stable across both (engine.connect(),
+conn.begin(), Session(bind=conn)).
 
 Usage
 -----
@@ -66,7 +71,7 @@ def engine():
 
 
 # ---------------------------------------------------------------------------
-# Session fixture — fresh transaction per test (SQLAlchemy 2.0 style)
+# Session fixture — fresh transaction per test
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
@@ -74,11 +79,11 @@ def session(engine) -> Session:
     """
     Function-scoped database session, isolated via a rolled-back transaction.
 
-    SQLAlchemy 2.0 pattern
-    ----------------------
+    Pattern (stable across SQLAlchemy 1.4 and 2.0)
+    -------------------------------------------------
     - ``engine.connect()`` returns a ``Connection``.
     - ``conn.begin()`` starts an explicit outer transaction.
-    - ``Session(conn)`` binds the ORM session to that connection so all
+    - ``Session(bind=conn)`` binds the ORM session to that connection so all
       ORM operations participate in the same transaction.
     - On teardown, the outer transaction is rolled back, discarding every
       change made during the test — the schema itself is never recreated.

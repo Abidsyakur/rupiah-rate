@@ -1,42 +1,48 @@
 """
 src/utils/database.py
 ======================
-SQLAlchemy 2.0 ORM models for the Rupiah Exchange Rate Intelligence platform.
+SQLAlchemy 1.4 ORM models for the Rupiah Exchange Rate Intelligence platform.
 
 Schema Reference : docs/SCHEMA.md  (ADR-002)
-SQLAlchemy       : 2.0+ (Mapped / mapped_column API, 2.0-style sessions)
+SQLAlchemy       : 1.4.x (declarative_base / Column-style — REQUIRED for
+                   compatibility with Apache Airflow, which pins
+                   sqlalchemy<2.0 across every released version to date)
 
 Tables
 ------
-- currencies           Dimension  – ISO 4217 currency reference data
-- api_sources          Config     – External API source registry
-- exchange_rates       Fact       – Raw rate observations
-- api_calls            Audit      – Immutable API-call log
-- data_quality_metrics Tracking   – Per-record quality-check results
-- daily_snapshots      Aggregated – Pre-computed OHLCV daily data
+- currencies           Dimension  - ISO 4217 currency reference data
+- api_sources          Config     - External API source registry
+- exchange_rates       Fact       - Raw rate observations
+- api_calls            Audit      - Immutable API-call log
+- data_quality_metrics Tracking   - Per-record quality-check results
+- daily_snapshots      Aggregated - Pre-computed OHLCV daily data
 
-Key SQLAlchemy 2.0 patterns used
----------------------------------
-- ``DeclarativeBase``            instead of ``declarative_base()``
-- ``Mapped[T]`` / ``mapped_column()`` instead of ``Column()`` assignments
-- ``Optional[T]``                to mark nullable columns
-- ``relationship()`` with ``Mapped[list[...]]`` / ``Mapped[...]`` annotations
-- ``Session.execute(select(...))`` instead of ``Session.query(...)``
-- ``with Session(engine) as session``  (2.0-style context manager)
-- ``AsyncSession`` -ready structure (sync engine shown; swap easily)
+Key SQLAlchemy 1.4 patterns used (deliberately, NOT 2.0 style)
+-----------------------------------------------------------------
+- ``declarative_base()``         instead of ``DeclarativeBase`` subclass
+- ``Column()`` assignments       instead of ``Mapped[T]`` / ``mapped_column()``
+- ``Session.query(Model)``       is still available (legacy ORM query API);
+  this module also supports ``session.execute(select(...))`` since 1.4
+  introduced the 2.0-style ``select()`` as opt-in -- we use plain
+  ``Column`` definitions but the modern ``select()`` construct is fine to
+  use from calling code since 1.4 supports both APIs simultaneously.
+- ``sessionmaker`` / context-manager session pattern unchanged from before.
 
 Usage
 -----
-    from src.utils.database import get_engine, get_session, Base
-    from src.utils.database import Currency, ExchangeRate
+    from src.models.database import get_engine, get_session, Base
+    from src.models.database import Currency, ExchangeRate
     from sqlalchemy import select
 
     engine = get_engine()
     Base.metadata.create_all(engine)
 
     with get_session(engine) as session:
+        # 1.4 legacy style:
+        currencies = session.query(Currency).filter(Currency.is_active == True).all()
+        # 1.4 also supports 2.0-style select() as opt-in:
         stmt = select(Currency).where(Currency.is_active == True)
-        currencies = session.scalars(stmt).all()
+        currencies = session.execute(stmt).scalars().all()
 """
 
 from __future__ import annotations
@@ -44,15 +50,14 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import contextmanager
-from datetime import date, datetime
-from decimal import Decimal
 from enum import Enum as PyEnum
-from typing import Generator, List, Optional
+from typing import Generator, Optional
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Column,
     Date,
     DateTime,
     ForeignKey,
@@ -69,15 +74,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
-from sqlalchemy.orm import (
-    DeclarativeBase,
-    Mapped,
-    MappedColumn,
-    Session,
-    mapped_column,
-    relationship,
-    sessionmaker,
-)
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import Session, relationship, sessionmaker
 from sqlalchemy.pool import QueuePool, StaticPool
 
 logger = logging.getLogger(__name__)
@@ -110,7 +108,7 @@ _ENV_STAGING = "staging"
 _ENV_PROD    = "prod"
 _VALID_ENVS  = {_ENV_DEV, _ENV_STAGING, _ENV_PROD}
 
-_POOL_CONFIG: dict[str, dict] = {
+_POOL_CONFIG: dict = {
     _ENV_DEV: {
         "pool_size": 2, "max_overflow": 3,
         "pool_timeout": 30, "pool_recycle": 1800,
@@ -135,8 +133,8 @@ def _get_database_url(env: Optional[str] = None) -> str:
 
     Lookup order
     ------------
-    1. ``DATABASE_URL``          – generic override (all envs)
-    2. ``DATABASE_URL_<ENV>``    – env-specific, e.g. ``DATABASE_URL_PROD``
+    1. ``DATABASE_URL``          - generic override (all envs)
+    2. ``DATABASE_URL_<ENV>``    - env-specific, e.g. ``DATABASE_URL_PROD``
     3. Raises :exc:`EnvironmentError` if neither is set.
 
     Parameters
@@ -167,20 +165,20 @@ def _get_database_url(env: Optional[str] = None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Declarative base
+# Declarative base (1.4 style)
 # ---------------------------------------------------------------------------
 
-class Base(DeclarativeBase):
-    """
-    Shared declarative base for all ORM models (SQLAlchemy 2.0).
+Base = declarative_base()
+"""
+Shared declarative base for all ORM models (SQLAlchemy 1.4 style).
 
-    All models inherit from this class.  ``Base.metadata`` is the single
-    source of truth for schema creation and Alembic autogenerate.
-    """
+All models inherit from this class.  ``Base.metadata`` is the single
+source of truth for schema creation and Alembic autogenerate.
+"""
 
 
 # ---------------------------------------------------------------------------
-# Timestamp mixin  (2.0-style: MappedColumn annotations)
+# Timestamp mixin (1.4 style: plain Column assignments)
 # ---------------------------------------------------------------------------
 
 class TimestampMixin:
@@ -191,13 +189,13 @@ class TimestampMixin:
     - ``updated_at`` is refreshed on every UPDATE via ``onupdate``.
     """
 
-    created_at: Mapped[datetime] = mapped_column(
+    created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
         doc="UTC timestamp of row creation.",
     )
-    updated_at: Mapped[datetime] = mapped_column(
+    updated_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
@@ -222,7 +220,7 @@ class Currency(TimestampMixin, Base):
     currency_id : int
         Auto-incrementing surrogate primary key.
     code : str
-        ISO 4217 three-letter code (``"USD"``, ``"IDR"`` …). Unique.
+        ISO 4217 three-letter code (``"USD"``, ``"IDR"`` ...). Unique.
     name : str
         Human-readable name (``"US Dollar"``).
     is_active : bool
@@ -233,25 +231,25 @@ class Currency(TimestampMixin, Base):
     __tablename__ = "currencies"
 
     # ---- Columns ----
-    currency_id: Mapped[int] = mapped_column(
+    currency_id = Column(
         Integer,
         primary_key=True,
         autoincrement=True,
         doc="Surrogate primary key.",
     )
-    code: Mapped[str] = mapped_column(
+    code = Column(
         String(3),
         nullable=False,
         unique=True,
         index=True,
         doc="ISO 4217 code, e.g. 'USD'.",
     )
-    name: Mapped[str] = mapped_column(
+    name = Column(
         String(255),
         nullable=False,
         doc="Full currency name.",
     )
-    is_active: Mapped[bool] = mapped_column(
+    is_active = Column(
         Boolean,
         nullable=False,
         default=True,
@@ -260,14 +258,14 @@ class Currency(TimestampMixin, Base):
     )
 
     # ---- Relationships ----
-    rates_as_base: Mapped[List["ExchangeRate"]] = relationship(
+    rates_as_base = relationship(
         "ExchangeRate",
         foreign_keys="ExchangeRate.from_currency_id",
         back_populates="from_currency",
         lazy="select",
         doc="ExchangeRate rows where this currency is the base.",
     )
-    rates_as_quote: Mapped[List["ExchangeRate"]] = relationship(
+    rates_as_quote = relationship(
         "ExchangeRate",
         foreign_keys="ExchangeRate.to_currency_id",
         back_populates="to_currency",
@@ -283,7 +281,7 @@ class ApiSource(TimestampMixin, Base):
     """
     Configuration table for external API source metadata.
 
-    Each row describes one provider (``yfinance``, ``fred``, …).  Pipeline
+    Each row describes one provider (``yfinance``, ``fred``, ...).  Pipeline
     behaviour (retry strategy, rate limit) is stored here so it can be tuned
     at runtime without code changes.
 
@@ -306,35 +304,35 @@ class ApiSource(TimestampMixin, Base):
     __tablename__ = "api_sources"
 
     # ---- Columns ----
-    source_id: Mapped[int] = mapped_column(
+    source_id = Column(
         Integer,
         primary_key=True,
         autoincrement=True,
         doc="Surrogate primary key.",
     )
-    source_name: Mapped[str] = mapped_column(
+    source_name = Column(
         String(100),
         nullable=False,
         unique=True,
         index=True,
         doc="Canonical identifier, e.g. 'yfinance' or 'fred'.",
     )
-    api_endpoint: Mapped[Optional[str]] = mapped_column(
+    api_endpoint = Column(
         String(500),
         nullable=True,
         doc="Base URL of the external API.",
     )
-    retry_strategy: Mapped[Optional[str]] = mapped_column(
+    retry_strategy = Column(
         String(100),
         nullable=True,
         doc="Human-readable retry strategy description.",
     )
-    rate_limit: Mapped[Optional[int]] = mapped_column(
+    rate_limit = Column(
         Integer,
         nullable=True,
         doc="Max requests per hour (None = unknown/unlimited).",
     )
-    is_active: Mapped[bool] = mapped_column(
+    is_active = Column(
         Boolean,
         nullable=False,
         default=True,
@@ -343,13 +341,13 @@ class ApiSource(TimestampMixin, Base):
     )
 
     # ---- Relationships ----
-    exchange_rates: Mapped[List["ExchangeRate"]] = relationship(
+    exchange_rates = relationship(
         "ExchangeRate",
         back_populates="source",
         lazy="select",
         doc="ExchangeRate rows fetched from this source.",
     )
-    api_calls: Mapped[List["ApiCall"]] = relationship(
+    api_calls = relationship(
         "ApiCall",
         back_populates="source",
         lazy="select",
@@ -374,11 +372,11 @@ class ExchangeRate(TimestampMixin, Base):
     rate_id : int
         Auto-incrementing BigInteger primary key.
     from_currency_id : int
-        FK → :class:`Currency` (base currency, e.g. USD).
+        FK -> :class:`Currency` (base currency, e.g. USD).
     to_currency_id : int
-        FK → :class:`Currency` (quote currency, e.g. IDR).
+        FK -> :class:`Currency` (quote currency, e.g. IDR).
     source_id : int
-        FK → :class:`ApiSource`.
+        FK -> :class:`ApiSource`.
     rate : Decimal
         Exchange rate value; must be > 0.
     timestamp : datetime
@@ -392,46 +390,46 @@ class ExchangeRate(TimestampMixin, Base):
     __tablename__ = "exchange_rates"
 
     # ---- Columns ----
-    rate_id: Mapped[int] = mapped_column(
+    rate_id = Column(
         BigInteger().with_variant(Integer, "sqlite"),
         primary_key=True,
         autoincrement=True,
         doc="Surrogate BigInteger primary key (INTEGER on SQLite for rowid autoincrement).",
     )
-    from_currency_id: Mapped[int] = mapped_column(
+    from_currency_id = Column(
         Integer,
         ForeignKey("currencies.currency_id", ondelete="RESTRICT"),
         nullable=False,
         doc="Base currency FK (e.g. USD).",
     )
-    to_currency_id: Mapped[int] = mapped_column(
+    to_currency_id = Column(
         Integer,
         ForeignKey("currencies.currency_id", ondelete="RESTRICT"),
         nullable=False,
         doc="Quote currency FK (e.g. IDR).",
     )
-    source_id: Mapped[int] = mapped_column(
+    source_id = Column(
         Integer,
         ForeignKey("api_sources.source_id", ondelete="RESTRICT"),
         nullable=False,
         doc="FK to the API source that provided this rate.",
     )
-    rate: Mapped[Decimal] = mapped_column(
+    rate = Column(
         Numeric(12, 6),
         nullable=False,
         doc="Exchange rate; enforced > 0 by CHECK constraint.",
     )
-    timestamp: Mapped[datetime] = mapped_column(
+    timestamp = Column(
         DateTime(timezone=True),
         nullable=False,
         doc="Market timestamp of the observation (UTC).",
     )
-    data_quality_score: Mapped[Optional[Decimal]] = mapped_column(
+    data_quality_score = Column(
         Numeric(3, 2),
         nullable=True,
-        doc="Composite quality score 0.00 – 1.00.",
+        doc="Composite quality score 0.00 - 1.00.",
     )
-    is_valid: Mapped[bool] = mapped_column(
+    is_valid = Column(
         Boolean,
         nullable=False,
         default=True,
@@ -462,24 +460,24 @@ class ExchangeRate(TimestampMixin, Base):
     )
 
     # ---- Relationships ----
-    from_currency: Mapped["Currency"] = relationship(
+    from_currency = relationship(
         "Currency",
         foreign_keys=[from_currency_id],
         back_populates="rates_as_base",
         doc="Base currency object.",
     )
-    to_currency: Mapped["Currency"] = relationship(
+    to_currency = relationship(
         "Currency",
         foreign_keys=[to_currency_id],
         back_populates="rates_as_quote",
         doc="Quote currency object.",
     )
-    source: Mapped["ApiSource"] = relationship(
+    source = relationship(
         "ApiSource",
         back_populates="exchange_rates",
         doc="API source that provided this rate.",
     )
-    quality_metrics: Mapped[List["DataQualityMetric"]] = relationship(
+    quality_metrics = relationship(
         "DataQualityMetric",
         back_populates="exchange_rate",
         cascade="all, delete-orphan",
@@ -506,7 +504,7 @@ class ApiCall(Base):
     call_id : int
         Auto-incrementing BigInteger primary key.
     source_id : int
-        FK → :class:`ApiSource`.
+        FK -> :class:`ApiSource`.
     timestamp : datetime
         UTC time the call was initiated.
     status : str
@@ -522,55 +520,55 @@ class ApiCall(Base):
     __tablename__ = "api_calls"
 
     # ---- Columns ----
-    call_id: Mapped[int] = mapped_column(
+    call_id = Column(
         BigInteger().with_variant(Integer, "sqlite"),
         primary_key=True,
         autoincrement=True,
         doc="Surrogate BigInteger primary key (INTEGER on SQLite for rowid autoincrement).",
     )
-    source_id: Mapped[int] = mapped_column(
+    source_id = Column(
         Integer,
         ForeignKey("api_sources.source_id", ondelete="RESTRICT"),
         nullable=False,
         doc="FK to the source that was called.",
     )
-    timestamp: Mapped[datetime] = mapped_column(
+    timestamp = Column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
         doc="UTC timestamp when the call was initiated.",
     )
-    status: Mapped[str] = mapped_column(
+    status = Column(
         String(50),
         nullable=False,
         doc="Call outcome: SUCCESS | TIMEOUT | RATE_LIMIT | ERROR.",
     )
-    error_message: Mapped[Optional[str]] = mapped_column(
+    error_message = Column(
         Text,
         nullable=True,
         doc="Full error text (populated when status != 'SUCCESS').",
     )
-    records_fetched: Mapped[Optional[int]] = mapped_column(
+    records_fetched = Column(
         Integer,
         nullable=True,
         doc="Total records returned by the API.",
     )
-    records_valid: Mapped[Optional[int]] = mapped_column(
+    records_valid = Column(
         Integer,
         nullable=True,
         doc="Records that passed all validation checks.",
     )
-    records_invalid: Mapped[Optional[int]] = mapped_column(
+    records_invalid = Column(
         Integer,
         nullable=True,
         doc="Records that failed one or more validation checks.",
     )
-    execution_time_ms: Mapped[Optional[int]] = mapped_column(
+    execution_time_ms = Column(
         Integer,
         nullable=True,
         doc="End-to-end API call duration in milliseconds.",
     )
-    created_at: Mapped[datetime] = mapped_column(
+    created_at = Column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -584,7 +582,7 @@ class ApiCall(Base):
     )
 
     # ---- Relationships ----
-    source: Mapped["ApiSource"] = relationship(
+    source = relationship(
         "ApiSource",
         back_populates="api_calls",
         doc="Source that was called.",
@@ -610,7 +608,7 @@ class DataQualityMetric(Base):
     metric_id : int
         Auto-incrementing BigInteger primary key.
     rate_id : int
-        FK → :class:`ExchangeRate`.
+        FK -> :class:`ExchangeRate`.
     check_name : str
         Check identifier: ``NULL_CHECK`` | ``RANGE_CHECK`` | ``ANOMALY_CHECK``.
     check_passed : bool
@@ -622,34 +620,34 @@ class DataQualityMetric(Base):
     __tablename__ = "data_quality_metrics"
 
     # ---- Columns ----
-    metric_id: Mapped[int] = mapped_column(
+    metric_id = Column(
         BigInteger().with_variant(Integer, "sqlite"),
         primary_key=True,
         autoincrement=True,
         doc="Surrogate BigInteger primary key (INTEGER on SQLite for rowid autoincrement).",
     )
-    rate_id: Mapped[int] = mapped_column(
+    rate_id = Column(
         BigInteger().with_variant(Integer, "sqlite"),
         ForeignKey("exchange_rates.rate_id", ondelete="CASCADE"),
         nullable=False,
         doc="FK to the exchange rate this metric evaluates.",
     )
-    check_name: Mapped[str] = mapped_column(
+    check_name = Column(
         String(100),
         nullable=False,
         doc="Quality check identifier: NULL_CHECK | RANGE_CHECK | ANOMALY_CHECK.",
     )
-    check_passed: Mapped[bool] = mapped_column(
+    check_passed = Column(
         Boolean,
         nullable=False,
         doc="True if the check passed.",
     )
-    anomaly_score: Mapped[Optional[Decimal]] = mapped_column(
+    anomaly_score = Column(
         Numeric(3, 2),
         nullable=True,
-        doc="Anomaly severity 0.00 – 1.00; None for non-anomaly checks.",
+        doc="Anomaly severity 0.00 - 1.00; None for non-anomaly checks.",
     )
-    created_at: Mapped[datetime] = mapped_column(
+    created_at = Column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
@@ -668,7 +666,7 @@ class DataQualityMetric(Base):
     )
 
     # ---- Relationships ----
-    exchange_rate: Mapped["ExchangeRate"] = relationship(
+    exchange_rate = relationship(
         "ExchangeRate",
         back_populates="quality_metrics",
         doc="The exchange rate record this metric evaluates.",
@@ -697,7 +695,7 @@ class DailySnapshot(TimestampMixin, Base):
     snapshot_date : date
         The calendar date this snapshot covers.
     from_currency_id / to_currency_id : int
-        FK → :class:`Currency` (base / quote).
+        FK -> :class:`Currency` (base / quote).
     rate_open / rate_high / rate_low / rate_close : Decimal
         OHLC values for the day.
     rate_avg : Decimal
@@ -715,24 +713,24 @@ class DailySnapshot(TimestampMixin, Base):
     __tablename__ = "daily_snapshots"
 
     # ---- Columns ----
-    snapshot_id: Mapped[int] = mapped_column(
+    snapshot_id = Column(
         BigInteger().with_variant(Integer, "sqlite"),
         primary_key=True,
         autoincrement=True,
         doc="Surrogate BigInteger primary key (INTEGER on SQLite for rowid autoincrement).",
     )
-    snapshot_date: Mapped[date] = mapped_column(
+    snapshot_date = Column(
         Date,
         nullable=False,
         doc="Calendar date covered by this snapshot.",
     )
-    from_currency_id: Mapped[int] = mapped_column(
+    from_currency_id = Column(
         Integer,
         ForeignKey("currencies.currency_id", ondelete="RESTRICT"),
         nullable=False,
         doc="Base currency FK.",
     )
-    to_currency_id: Mapped[int] = mapped_column(
+    to_currency_id = Column(
         Integer,
         ForeignKey("currencies.currency_id", ondelete="RESTRICT"),
         nullable=False,
@@ -740,37 +738,37 @@ class DailySnapshot(TimestampMixin, Base):
     )
 
     # ---- OHLCV ----
-    rate_open:  Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False,
-                                                doc="Opening rate for the day.")
-    rate_high:  Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False,
-                                                doc="Highest rate for the day.")
-    rate_low:   Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False,
-                                                doc="Lowest rate for the day.")
-    rate_close: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False,
-                                                doc="Closing rate for the day.")
-    rate_avg:   Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False,
-                                                doc="Average rate for the day.")
-    rate_ma7:   Mapped[Optional[Decimal]] = mapped_column(
+    rate_open = Column(Numeric(12, 6), nullable=False,
+                       doc="Opening rate for the day.")
+    rate_high = Column(Numeric(12, 6), nullable=False,
+                       doc="Highest rate for the day.")
+    rate_low = Column(Numeric(12, 6), nullable=False,
+                      doc="Lowest rate for the day.")
+    rate_close = Column(Numeric(12, 6), nullable=False,
+                        doc="Closing rate for the day.")
+    rate_avg = Column(Numeric(12, 6), nullable=False,
+                      doc="Average rate for the day.")
+    rate_ma7 = Column(
         Numeric(12, 6), nullable=True,
         doc="7-day simple moving average (None for first 6 days).",
     )
 
     # ---- Derived metrics ----
-    pct_change: Mapped[Optional[Decimal]] = mapped_column(
+    pct_change = Column(
         Numeric(6, 3),
         nullable=True,
         doc="% change vs. previous trading day close.",
     )
 
     # ---- Anomaly fields ----
-    is_anomaly: Mapped[bool] = mapped_column(
+    is_anomaly = Column(
         Boolean,
         nullable=False,
         default=False,
         server_default=text("false"),
         doc="True if the daily movement triggered an anomaly alert.",
     )
-    anomaly_level: Mapped[str] = mapped_column(
+    anomaly_level = Column(
         String(50),
         nullable=False,
         default=AnomalyLevelEnum.NORMAL.value,
@@ -812,7 +810,7 @@ def get_engine(
     env: Optional[str] = None,
 ) -> Engine:
     """
-    Create a SQLAlchemy 2.0 :class:`Engine` configured for the target env.
+    Create a SQLAlchemy 1.4 :class:`Engine` configured for the target env.
 
     Parameters
     ----------
@@ -887,10 +885,10 @@ def get_engine(
 
 
 # ===========================================================================
-# Session utilities  (SQLAlchemy 2.0 style)
+# Session utilities  (works for both 1.4 legacy query() and select())
 # ===========================================================================
 
-def get_session_factory(engine: Engine) -> sessionmaker[Session]:
+def get_session_factory(engine: Engine) -> sessionmaker:
     """
     Return a :class:`sessionmaker` bound to *engine*.
 
@@ -913,7 +911,7 @@ def get_session_factory(engine: Engine) -> sessionmaker[Session]:
 @contextmanager
 def get_session(engine: Engine) -> Generator[Session, None, None]:
     """
-    Context manager that yields a 2.0-style database session.
+    Context manager that yields a database session.
 
     Commits automatically on clean exit; rolls back and re-raises on any
     exception; always closes the session in the ``finally`` block.
@@ -936,10 +934,9 @@ def get_session(engine: Engine) -> Generator[Session, None, None]:
 
     Example
     -------
-    >>> from sqlalchemy import select
     >>> engine = get_engine()
     >>> with get_session(engine) as session:
-    ...     result = session.scalars(select(Currency)).all()
+    ...     result = session.query(Currency).all()
     """
     factory = get_session_factory(engine)
     session: Session = factory()
@@ -992,7 +989,7 @@ def drop_all_tables(engine: Engine) -> None:
             "drop_all_tables() must never be called in production. "
             "Use Alembic downgrade migrations instead."
         )
-    logger.warning("Dropping all tables — this is irreversible.")
+    logger.warning("Dropping all tables - this is irreversible.")
     Base.metadata.drop_all(engine)
     logger.warning("All tables dropped.")
 
