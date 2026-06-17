@@ -27,8 +27,8 @@ Test strategy
 
 from __future__ import annotations
 
-import sys
 import pathlib
+import sys
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -44,8 +44,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).parents[2] / "src"))
 from src.etl.validators import (
     BaseValidator,
     ExchangeRateValidator,
-    ValidatorConfig,
     ValidationResult,
+    ValidatorConfig,
     _env_bool,
     _env_float,
 )
@@ -64,29 +64,33 @@ NOW_UTC = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
 @pytest.fixture
 def ohlcv_df() -> pd.DataFrame:
     """Clean yfinance-style OHLCV DataFrame — all checks should pass."""
-    return pd.DataFrame({
-        "timestamp": [
-            "2025-01-13",
-            "2025-01-14",
-            "2025-01-15",
-            "2025-01-16",
-            "2025-01-17",
-        ],
-        "rate_open":  [16000.0, 16050.0, 16100.0, 16080.0, 16120.0],
-        "rate_high":  [16200.0, 16250.0, 16300.0, 16280.0, 16320.0],
-        "rate_low":   [15900.0, 15950.0, 16000.0, 15980.0, 16020.0],
-        "rate_close": [16100.0, 16150.0, 16200.0, 16180.0, 16220.0],
-    })
+    return pd.DataFrame(
+        {
+            "timestamp": [
+                "2025-01-13",
+                "2025-01-14",
+                "2025-01-15",
+                "2025-01-16",
+                "2025-01-17",
+            ],
+            "rate_open": [16000.0, 16050.0, 16100.0, 16080.0, 16120.0],
+            "rate_high": [16200.0, 16250.0, 16300.0, 16280.0, 16320.0],
+            "rate_low": [15900.0, 15950.0, 16000.0, 15980.0, 16020.0],
+            "rate_close": [16100.0, 16150.0, 16200.0, 16180.0, 16220.0],
+        }
+    )
 
 
 @pytest.fixture
 def fred_series() -> pd.Series:
     """Clean FRED monthly Series — chronological, no nulls."""
-    return pd.Series({
-        "2024-11-01": 16000.0,
-        "2024-12-01": 16100.0,
-        "2025-01-01": 16200.0,
-    })
+    return pd.Series(
+        {
+            "2024-11-01": 16000.0,
+            "2024-12-01": 16100.0,
+            "2025-01-01": 16200.0,
+        }
+    )
 
 
 @pytest.fixture
@@ -110,18 +114,20 @@ def _fresh_df(rate: float = 16000.0) -> pd.DataFrame:
     Single-row DataFrame with timestamp set to NOW_UTC so freshness
     always passes when ``now`` is mocked to ``NOW_UTC``.
     """
-    return pd.DataFrame({
-        "timestamp": [NOW_UTC.isoformat()],
-        "rate_close": [rate],
-    })
+    return pd.DataFrame(
+        {
+            "timestamp": [NOW_UTC.isoformat()],
+            "rate_close": [rate],
+        }
+    )
 
 
 # ===========================================================================
 # _env_float helper
 # ===========================================================================
 
-class TestEnvFloat:
 
+class TestEnvFloat:
     def test_returns_default_when_unset(self, monkeypatch):
         monkeypatch.delenv("_TEST_KEY", raising=False)
         assert _env_float("_TEST_KEY", 42.5) == pytest.approx(42.5)
@@ -139,8 +145,8 @@ class TestEnvFloat:
 # _env_bool helper
 # ===========================================================================
 
-class TestEnvBool:
 
+class TestEnvBool:
     def test_returns_default_when_unset(self, monkeypatch):
         monkeypatch.delenv("_TEST_BOOL", raising=False)
         assert _env_bool("_TEST_BOOL", True) is True
@@ -160,26 +166,29 @@ class TestEnvBool:
 # ValidatorConfig
 # ===========================================================================
 
-class TestValidatorConfig:
 
+class TestValidatorConfig:
     def test_default_values(self, monkeypatch):
         """All env vars absent → defaults are loaded."""
         for key in (
-            "VALIDATOR_NULL_THRESHOLD", "VALIDATOR_ANOMALY_STD_DEV",
-            "VALIDATOR_FRESHNESS_HOURS", "VALIDATOR_RATE_MIN",
-            "VALIDATOR_RATE_MAX", "VALIDATOR_FAIL_ON_ANOMALY",
+            "VALIDATOR_NULL_THRESHOLD",
+            "VALIDATOR_ANOMALY_STD_DEV",
+            "VALIDATOR_FRESHNESS_HOURS",
+            "VALIDATOR_RATE_MIN",
+            "VALIDATOR_RATE_MAX",
+            "VALIDATOR_FAIL_ON_ANOMALY",
             "VALIDATOR_FAIL_ON_NULL",
         ):
             monkeypatch.delenv(key, raising=False)
 
         cfg = ValidatorConfig()
-        assert cfg.null_threshold     == pytest.approx(0.05)
-        assert cfg.anomaly_std_dev    == pytest.approx(3.0)
-        assert cfg.freshness_hours    == pytest.approx(2.0)
-        assert cfg.rate_min           == pytest.approx(0.01)
-        assert cfg.rate_max           == pytest.approx(1_000_000.0)
-        assert cfg.fail_on_anomaly    is False
-        assert cfg.fail_on_null       is True
+        assert cfg.null_threshold == pytest.approx(0.05)
+        assert cfg.anomaly_std_dev == pytest.approx(3.0)
+        assert cfg.freshness_hours == pytest.approx(2.0)
+        assert cfg.rate_min == pytest.approx(0.01)
+        assert cfg.rate_max == pytest.approx(1_000_000.0)
+        assert cfg.fail_on_anomaly is False
+        assert cfg.fail_on_null is True
 
     def test_explicit_overrides_env(self, monkeypatch):
         monkeypatch.setenv("VALIDATOR_RATE_MIN", "999")
@@ -207,8 +216,8 @@ class TestValidatorConfig:
 # ValidationResult
 # ===========================================================================
 
-class TestValidationResult:
 
+class TestValidationResult:
     def test_default_creation(self):
         r = ValidationResult()
         assert r.is_valid is True
@@ -253,10 +262,11 @@ class TestValidationResult:
 # BaseValidator.log_results  (tested via ExchangeRateValidator)
 # ===========================================================================
 
-class TestBaseValidatorLogResults:
 
+class TestBaseValidatorLogResults:
     def test_logs_info_on_clean_result(self, validator, caplog):
         import logging
+
         result = ValidationResult(is_valid=True, quality_score=1.0)
         with caplog.at_level(logging.INFO):
             validator.log_results(result, source="test")
@@ -264,6 +274,7 @@ class TestBaseValidatorLogResults:
 
     def test_logs_error_on_invalid_result(self, validator, caplog):
         import logging
+
         result = ValidationResult(is_valid=False, quality_score=0.0)
         result.add_error("critical failure")
         with caplog.at_level(logging.ERROR):
@@ -272,6 +283,7 @@ class TestBaseValidatorLogResults:
 
     def test_logs_warning_on_warnings(self, validator, caplog):
         import logging
+
         result = ValidationResult()
         result.add_warning("soft issue here")
         with caplog.at_level(logging.WARNING):
@@ -283,13 +295,11 @@ class TestBaseValidatorLogResults:
 # ExchangeRateValidator — Null Values
 # ===========================================================================
 
-class TestValidateNullValues:
 
+class TestValidateNullValues:
     def test_pass_no_nulls(self, validator, ohlcv_df):
         result = ValidationResult()
-        ok, score = validator.validate_null_values(
-            ohlcv_df, ["rate_open", "rate_close"], result
-        )
+        ok, score = validator.validate_null_values(ohlcv_df, ["rate_open", "rate_close"], result)
         assert ok is True
         assert score == pytest.approx(1.0)
         assert result.errors == []
@@ -300,10 +310,12 @@ class TestValidateNullValues:
         threshold is 0.05 but ratio is 0.1 so with fail_on_null=True it errors."""
         cfg = ValidatorConfig(null_threshold=0.5, fail_on_null=False)
         v = ExchangeRateValidator(config=cfg)
-        df = pd.DataFrame({
-            "timestamp": ["2025-01-01", "2025-01-02"],
-            "rate_close": [16000.0, None],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": ["2025-01-01", "2025-01-02"],
+                "rate_close": [16000.0, None],
+            }
+        )
         result = ValidationResult()
         ok, score = v.validate_null_values(df, ["rate_close"], result)
         assert ok is True
@@ -313,10 +325,12 @@ class TestValidateNullValues:
 
     def test_fail_null_values_exceed_threshold(self, validator):
         """50% nulls with fail_on_null=True and threshold=0.05 → hard fail."""
-        df = pd.DataFrame({
-            "timestamp": ["2025-01-01", "2025-01-02"],
-            "rate_close": [16000.0, None],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": ["2025-01-01", "2025-01-02"],
+                "rate_close": [16000.0, None],
+            }
+        )
         result = ValidationResult()
         ok, score = validator.validate_null_values(df, ["rate_close"], result)
         assert ok is False
@@ -324,9 +338,11 @@ class TestValidateNullValues:
         assert score < 1.0
 
     def test_all_nulls_gives_zero_score(self, validator):
-        df = pd.DataFrame({
-            "rate_close": [None, None, None],
-        })
+        df = pd.DataFrame(
+            {
+                "rate_close": [None, None, None],
+            }
+        )
         result = ValidationResult()
         ok, score = validator.validate_null_values(df, ["rate_close"], result)
         assert score == pytest.approx(0.0)
@@ -344,8 +360,8 @@ class TestValidateNullValues:
 # ExchangeRateValidator — Rate Range
 # ===========================================================================
 
-class TestValidateRateRange:
 
+class TestValidateRateRange:
     def test_valid_rates(self, validator, ohlcv_df):
         result = ValidationResult()
         ok, score = validator.validate_rate_range(
@@ -378,9 +394,7 @@ class TestValidateRateRange:
 
     def test_excessive_precision_warns(self, validator):
         """11 decimal places → soft warning, not hard fail."""
-        df = pd.DataFrame({
-            "rate_close": [16000.12345678901, 16100.0, 16200.0]
-        })
+        df = pd.DataFrame({"rate_close": [16000.12345678901, 16100.0, 16200.0]})
         result = ValidationResult()
         ok, score = validator.validate_rate_range(df, ["rate_close"], result)
         assert ok is True
@@ -388,9 +402,7 @@ class TestValidateRateRange:
 
     def test_score_proportional_to_valid_cells(self, validator):
         """2 out of 4 rates invalid → score ≤ 0.5."""
-        df = pd.DataFrame({
-            "rate_close": [-1.0, -2.0, 16000.0, 16100.0]
-        })
+        df = pd.DataFrame({"rate_close": [-1.0, -2.0, 16000.0, 16100.0]})
         result = ValidationResult()
         _, score = validator.validate_rate_range(df, ["rate_close"], result)
         assert score <= 0.5
@@ -407,8 +419,8 @@ class TestValidateRateRange:
 # ExchangeRateValidator — Date Consistency
 # ===========================================================================
 
-class TestValidateDateConsistency:
 
+class TestValidateDateConsistency:
     def test_valid_chronological_order(self, validator, ohlcv_df):
         result = ValidationResult()
         ok, score = validator.validate_date_consistency(ohlcv_df, result)
@@ -417,10 +429,12 @@ class TestValidateDateConsistency:
         assert result.errors == []
 
     def test_out_of_order_hard_fail(self, validator):
-        df = pd.DataFrame({
-            "timestamp": ["2025-01-15", "2025-01-14", "2025-01-13"],
-            "rate_close": [16000.0, 16100.0, 16200.0],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": ["2025-01-15", "2025-01-14", "2025-01-13"],
+                "rate_close": [16000.0, 16100.0, 16200.0],
+            }
+        )
         result = ValidationResult()
         ok, score = validator.validate_date_consistency(df, result)
         assert ok is False
@@ -428,10 +442,12 @@ class TestValidateDateConsistency:
         assert any("chronological" in e for e in result.errors)
 
     def test_duplicate_dates_warns_not_fails(self, validator):
-        df = pd.DataFrame({
-            "timestamp": ["2025-01-13", "2025-01-13", "2025-01-14"],
-            "rate_close": [16000.0, 16000.0, 16100.0],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": ["2025-01-13", "2025-01-13", "2025-01-14"],
+                "rate_close": [16000.0, 16000.0, 16100.0],
+            }
+        )
         result = ValidationResult()
         ok, score = validator.validate_date_consistency(df, result)
         assert ok is True
@@ -447,10 +463,12 @@ class TestValidateDateConsistency:
         assert any("no timestamp" in w.lower() for w in result.warnings)
 
     def test_date_column_also_accepted(self, validator):
-        df = pd.DataFrame({
-            "date": ["2025-01-13", "2025-01-14", "2025-01-15"],
-            "rate_close": [16000.0, 16100.0, 16200.0],
-        })
+        df = pd.DataFrame(
+            {
+                "date": ["2025-01-13", "2025-01-14", "2025-01-15"],
+                "rate_close": [16000.0, 16100.0, 16200.0],
+            }
+        )
         result = ValidationResult()
         ok, _ = validator.validate_date_consistency(df, result)
         assert ok is True
@@ -468,13 +486,11 @@ class TestValidateDateConsistency:
 # ExchangeRateValidator — Anomaly Detection
 # ===========================================================================
 
-class TestDetectAnomalies:
 
+class TestDetectAnomalies:
     def test_no_anomalies_in_stable_data(self, validator, ohlcv_df):
         result = ValidationResult()
-        ok, score = validator.detect_anomalies(
-            ohlcv_df, ["rate_open", "rate_close"], result
-        )
+        ok, score = validator.detect_anomalies(ohlcv_df, ["rate_open", "rate_close"], result)
         assert ok is True
         assert score == pytest.approx(1.0)
         assert result.anomaly_scores == {}
@@ -484,13 +500,15 @@ class TestDetectAnomalies:
         # 19 stable values + 1 huge outlier = 20 rows, strong Z-score signal
         stable = [16000.0] * 19
         rates = stable + [500_000.0]
-        df = pd.DataFrame({
-            "timestamp": [f"2025-01-{i+1:02d}" for i in range(20)],
-            "rate_close": rates,
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": [f"2025-01-{i+1:02d}" for i in range(20)],
+                "rate_close": rates,
+            }
+        )
         result = ValidationResult()
         ok, score = validator.detect_anomalies(df, ["rate_close"], result)
-        assert ok is True                          # fail_on_anomaly=False
+        assert ok is True  # fail_on_anomaly=False
         assert len(result.anomaly_scores) >= 1
         assert any("anomalous" in w for w in result.warnings)
         assert score < 1.0
@@ -534,9 +552,7 @@ class TestDetectAnomalies:
 
     def test_details_populated(self, validator, ohlcv_df):
         result = ValidationResult()
-        validator.detect_anomalies(
-            ohlcv_df, ["rate_close"], result
-        )
+        validator.detect_anomalies(ohlcv_df, ["rate_close"], result)
         assert "anomaly_count" in result.details
         assert "anomaly_ratio" in result.details
 
@@ -545,15 +561,17 @@ class TestDetectAnomalies:
 # ExchangeRateValidator — Freshness
 # ===========================================================================
 
-class TestValidateFreshness:
 
+class TestValidateFreshness:
     def test_fresh_data_passes(self, validator):
         """Timestamp 30 minutes ago → within 2h threshold → score 1.0."""
         recent = NOW_UTC - timedelta(minutes=30)
-        df = pd.DataFrame({
-            "timestamp": [recent.isoformat()],
-            "rate_close": [16000.0],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": [recent.isoformat()],
+                "rate_close": [16000.0],
+            }
+        )
         result = ValidationResult()
         with patch(
             "etl.validators.datetime",
@@ -570,16 +588,18 @@ class TestValidateFreshness:
     def test_stale_data_warns(self, validator):
         """Timestamp 5 hours ago with 2h threshold → warning, score < 1."""
         stale = NOW_UTC - timedelta(hours=5)
-        df = pd.DataFrame({
-            "timestamp": [stale.isoformat()],
-            "rate_close": [16000.0],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": [stale.isoformat()],
+                "rate_close": [16000.0],
+            }
+        )
         result = ValidationResult()
         with patch("etl.validators.datetime") as mock_dt:
             mock_dt.now.return_value = NOW_UTC
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
             ok, score = validator.validate_freshness(df, result)
-        assert ok is True                     # freshness is always soft
+        assert ok is True  # freshness is always soft
         assert any("old" in w for w in result.warnings)
         assert score < 1.0
 
@@ -619,27 +639,41 @@ class TestValidateFreshness:
 # ExchangeRateValidator — Quality Score
 # ===========================================================================
 
-class TestCalculateQualityScore:
 
+class TestCalculateQualityScore:
     def test_perfect_score(self, validator):
-        scores = {k: 1.0 for k in
-                  ("null_check", "rate_range", "date_consistency",
-                   "anomaly_detection", "freshness")}
+        scores = {
+            k: 1.0
+            for k in (
+                "null_check",
+                "rate_range",
+                "date_consistency",
+                "anomaly_detection",
+                "freshness",
+            )
+        }
         assert validator.calculate_quality_score(scores) == pytest.approx(1.0)
 
     def test_zero_score_all_failed(self, validator):
-        scores = {k: 0.0 for k in
-                  ("null_check", "rate_range", "date_consistency",
-                   "anomaly_detection", "freshness")}
+        scores = {
+            k: 0.0
+            for k in (
+                "null_check",
+                "rate_range",
+                "date_consistency",
+                "anomaly_detection",
+                "freshness",
+            )
+        }
         assert validator.calculate_quality_score(scores) == pytest.approx(0.0)
 
     def test_average_of_mixed_scores(self, validator):
         scores = {
-            "null_check":        1.0,
-            "rate_range":        1.0,
-            "date_consistency":  0.8,
+            "null_check": 1.0,
+            "rate_range": 1.0,
+            "date_consistency": 0.8,
             "anomaly_detection": 0.9,
-            "freshness":         1.0,
+            "freshness": 1.0,
         }
         expected = round((1.0 + 1.0 + 0.8 + 0.9 + 1.0) / 5, 4)
         assert validator.calculate_quality_score(scores) == pytest.approx(expected)
@@ -660,8 +694,8 @@ class TestCalculateQualityScore:
 # ExchangeRateValidator — validate() complete flow
 # ===========================================================================
 
-class TestValidateCompleteFlow:
 
+class TestValidateCompleteFlow:
     def test_clean_ohlcv_dataframe_is_valid(self, validator, ohlcv_df):
         """Fully clean data → is_valid=True, quality close to 1."""
         with patch("etl.validators.datetime") as mock_dt:
@@ -670,8 +704,7 @@ class TestValidateCompleteFlow:
             mock_dt.now.return_value = NOW_UTC
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
             ohlcv_df["timestamp"] = [
-                (NOW_UTC - timedelta(hours=4-i)).isoformat()
-                for i in range(len(ohlcv_df))
+                (NOW_UTC - timedelta(hours=4 - i)).isoformat() for i in range(len(ohlcv_df))
             ]
             result = validator.validate(ohlcv_df)
 
@@ -699,10 +732,12 @@ class TestValidateCompleteFlow:
 
     def test_validate_missing_rate_columns(self, validator):
         """DataFrame with no recognised rate columns → is_valid=False."""
-        df = pd.DataFrame({
-            "timestamp": ["2025-01-01"],
-            "unknown_col": [1.0],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": ["2025-01-01"],
+                "unknown_col": [1.0],
+            }
+        )
         result = validator.validate(df)
         assert result.is_valid is False
         assert any("No rate columns" in e for e in result.errors)
@@ -714,25 +749,32 @@ class TestValidateCompleteFlow:
     def test_validate_returns_correct_check_keys(self, validator, ohlcv_df):
         result = validator.validate(ohlcv_df)
         expected_keys = {
-            "null_check", "rate_range", "date_consistency",
-            "anomaly_detection", "freshness",
+            "null_check",
+            "rate_range",
+            "date_consistency",
+            "anomaly_detection",
+            "freshness",
         }
         assert expected_keys.issubset(result.checks_passed.keys())
 
     def test_validate_with_negative_rate_fails(self, validator):
-        df = pd.DataFrame({
-            "timestamp": ["2025-01-13", "2025-01-14", "2025-01-15"],
-            "rate_close": [-100.0, 16000.0, 16100.0],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": ["2025-01-13", "2025-01-14", "2025-01-15"],
+                "rate_close": [-100.0, 16000.0, 16100.0],
+            }
+        )
         result = validator.validate(df)
         assert result.is_valid is False
         assert result.checks_passed["rate_range"] is False
 
     def test_validate_with_out_of_order_dates_fails(self, validator):
-        df = pd.DataFrame({
-            "timestamp": ["2025-01-15", "2025-01-14", "2025-01-13"],
-            "rate_close": [16000.0, 16100.0, 16200.0],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": ["2025-01-15", "2025-01-14", "2025-01-13"],
+                "rate_close": [16000.0, 16100.0, 16200.0],
+            }
+        )
         result = validator.validate(df)
         assert result.is_valid is False
         assert result.checks_passed["date_consistency"] is False
@@ -752,8 +794,8 @@ class TestValidateCompleteFlow:
 # ExchangeRateValidator — private helpers
 # ===========================================================================
 
-class TestPrivateHelpers:
 
+class TestPrivateHelpers:
     def test_series_to_dataframe_columns(self, validator):
         s = pd.Series({"2025-01-01": 100.0, "2025-01-02": 101.0})
         df = validator._series_to_dataframe(s)
@@ -809,55 +851,66 @@ class TestPrivateHelpers:
 # ExchangeRateValidator — parametrized edge cases
 # ===========================================================================
 
-class TestEdgeCases:
 
+class TestEdgeCases:
     @pytest.mark.parametrize("n_rows", [3, 10, 50, 100])
     def test_validate_various_dataframe_sizes(self, validator, n_rows):
         """All sizes >= 3 should complete without exception."""
-        df = pd.DataFrame({
-            "timestamp": pd.date_range("2025-01-01", periods=n_rows, freq="D")
-                          .strftime("%Y-%m-%d"),
-            "rate_close": [16000.0 + i for i in range(n_rows)],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": pd.date_range("2025-01-01", periods=n_rows, freq="D").strftime(
+                    "%Y-%m-%d"
+                ),
+                "rate_close": [16000.0 + i for i in range(n_rows)],
+            }
+        )
         result = validator.validate(df)
         assert isinstance(result, ValidationResult)
 
     def test_validate_single_row_dataframe(self, validator):
         """Single row — anomaly detection skips (< 3 rows), rest runs."""
-        df = pd.DataFrame({
-            "timestamp": ["2025-01-01"],
-            "rate_close": [16000.0],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": ["2025-01-01"],
+                "rate_close": [16000.0],
+            }
+        )
         result = validator.validate(df)
         assert isinstance(result, ValidationResult)
         assert any("fewer than 3" in w for w in result.warnings)
 
     def test_validate_series_unsorted_input(self, validator):
         """Series with reversed index → _series_to_dataframe should sort it."""
-        s = pd.Series({
-            "2025-01-03": 16200.0,
-            "2025-01-01": 16000.0,
-            "2025-01-02": 16100.0,
-        })
+        s = pd.Series(
+            {
+                "2025-01-03": 16200.0,
+                "2025-01-01": 16000.0,
+                "2025-01-02": 16100.0,
+            }
+        )
         result = validator.validate(s)
         # Date consistency should pass after sort
         assert result.checks_passed.get("date_consistency") is True
 
     def test_validate_alternative_rate_col(self, validator):
         """DataFrame with 'value' column (not OHLCV) is recognised."""
-        df = pd.DataFrame({
-            "timestamp": ["2025-01-01", "2025-01-02", "2025-01-03"],
-            "value": [16000.0, 16100.0, 16200.0],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": ["2025-01-01", "2025-01-02", "2025-01-03"],
+                "value": [16000.0, 16100.0, 16200.0],
+            }
+        )
         result = validator.validate(df)
         assert result.checks_passed.get("rate_range") is True
 
     def test_validate_with_nulls_and_invalid_range_both_fail(self, validator):
         """Both null check AND rate range fail → is_valid False, 2 errors."""
-        df = pd.DataFrame({
-            "timestamp": ["2025-01-01", "2025-01-02", "2025-01-03"],
-            "rate_close": [None, -1.0, 16000.0],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": ["2025-01-01", "2025-01-02", "2025-01-03"],
+                "rate_close": [None, -1.0, 16000.0],
+            }
+        )
         result = validator.validate(df)
         assert result.is_valid is False
         # null check triggers (50% null > 5% threshold with fail_on_null=True)

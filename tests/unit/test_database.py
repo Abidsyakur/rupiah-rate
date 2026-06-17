@@ -61,9 +61,9 @@ from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.utils.database import (
+    AnomalyLevelEnum,
     ApiCall,
     ApiCallStatusEnum,
-    AnomalyLevelEnum,
     ApiSource,
     Base,
     Currency,
@@ -85,7 +85,7 @@ from src.utils.database import (
 
 SQLITE_URL = "sqlite://"
 FIXED_DATE = date(2025, 1, 15)
-FIXED_TS   = datetime(2025, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+FIXED_TS = datetime(2025, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +96,7 @@ FIXED_TS   = datetime(2025, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
 # ---------------------------------------------------------------------------
 # Builder helpers  (plain functions, not fixtures)
 # ---------------------------------------------------------------------------
+
 
 def make_currency(
     code: str = "USD",
@@ -189,6 +190,7 @@ def make_daily_snapshot(
 # Shared setup: seed USD + IDR + yfinance source
 # ---------------------------------------------------------------------------
 
+
 def _seed_base(session: Session) -> tuple[Currency, Currency, ApiSource]:
     """Insert USD, IDR, yfinance and flush so PKs are assigned."""
     usd = make_currency("USD", "US Dollar")
@@ -203,6 +205,7 @@ def _seed_base(session: Session) -> tuple[Currency, Currency, ApiSource]:
 # Query helpers (SQLAlchemy 1.4 compatible — uses legacy query() API since
 # session.scalars() with a Select construct was only added in 2.0)
 # ---------------------------------------------------------------------------
+
 
 def _one(session: Session, model, **kwargs):
     """Return the single row matching the given kwargs (1.4 query() style)."""
@@ -221,8 +224,8 @@ def _count(session: Session, model) -> int:
 # 1. Currency Model
 # ===========================================================================
 
-class TestCurrencyModel:
 
+class TestCurrencyModel:
     def test_create_currency_persists_all_fields(self, session):
         session.add(make_currency("EUR", "Euro", is_active=True))
         session.flush()
@@ -277,13 +280,16 @@ class TestCurrencyModel:
         assert "CHF" in repr(c)
         assert "Currency" in repr(c)
 
-    @pytest.mark.parametrize("code,name", [
-        ("USD", "US Dollar"),
-        ("EUR", "Euro"),
-        ("SGD", "Singapore Dollar"),
-        ("JPY", "Japanese Yen"),
-        ("IDR", "Indonesian Rupiah"),
-    ])
+    @pytest.mark.parametrize(
+        "code,name",
+        [
+            ("USD", "US Dollar"),
+            ("EUR", "Euro"),
+            ("SGD", "Singapore Dollar"),
+            ("JPY", "Japanese Yen"),
+            ("IDR", "Indonesian Rupiah"),
+        ],
+    )
     def test_all_tracked_currencies_insertable(self, session, code, name):
         session.add(make_currency(code, name))
         session.flush()
@@ -294,15 +300,17 @@ class TestCurrencyModel:
 # 2. ApiSource Model
 # ===========================================================================
 
-class TestApiSourceModel:
 
+class TestApiSourceModel:
     def test_create_api_source_all_fields(self, session):
-        session.add(make_api_source(
-            name="fred",
-            endpoint="https://api.stlouisfed.org/fred",
-            rate_limit=120,
-            retry_strategy="exponential_backoff_max3",
-        ))
+        session.add(
+            make_api_source(
+                name="fred",
+                endpoint="https://api.stlouisfed.org/fred",
+                rate_limit=120,
+                retry_strategy="exponential_backoff_max3",
+            )
+        )
         session.flush()
 
         fetched = _one(session, ApiSource, source_name="fred")
@@ -348,11 +356,7 @@ class TestApiSourceModel:
     def test_all_pipeline_sources_insertable(self, session, source_name):
         session.add(ApiSource(source_name=source_name, is_active=True))
         session.flush()
-        result = (
-            session.query(ApiSource)
-            .filter(ApiSource.source_name == source_name)
-            .one()
-        )
+        result = session.query(ApiSource).filter(ApiSource.source_name == source_name).one()
         assert result.source_name == source_name
 
 
@@ -360,8 +364,8 @@ class TestApiSourceModel:
 # 3. ExchangeRate Model
 # ===========================================================================
 
-class TestExchangeRateModel:
 
+class TestExchangeRateModel:
     def test_create_exchange_rate_all_fields(self, session):
         usd, idr, src = _seed_base(session)
         er = make_exchange_rate(usd.currency_id, idr.currency_id, src.source_id)
@@ -391,9 +395,7 @@ class TestExchangeRateModel:
 
     def test_exchange_rate_quality_score_nullable(self, session):
         usd, idr, src = _seed_base(session)
-        er = make_exchange_rate(
-            usd.currency_id, idr.currency_id, src.source_id, quality=None
-        )
+        er = make_exchange_rate(usd.currency_id, idr.currency_id, src.source_id, quality=None)
         session.add(er)
         session.flush()
 
@@ -432,9 +434,9 @@ class TestExchangeRateModel:
         usd, idr, src = _seed_base(session)
         ts2 = datetime(2025, 1, 15, 11, 30, 0, tzinfo=timezone.utc)
         session.add(make_exchange_rate(usd.currency_id, idr.currency_id, src.source_id))
-        session.add(make_exchange_rate(
-            usd.currency_id, idr.currency_id, src.source_id, timestamp=ts2
-        ))
+        session.add(
+            make_exchange_rate(usd.currency_id, idr.currency_id, src.source_id, timestamp=ts2)
+        )
         session.flush()  # must not raise
 
         assert _count(session, ExchangeRate) == 2
@@ -451,8 +453,8 @@ class TestExchangeRateModel:
 # 4. ApiCall Model
 # ===========================================================================
 
-class TestApiCallModel:
 
+class TestApiCallModel:
     def test_create_api_call_success_status(self, session):
         _, _, src = _seed_base(session)
         call = make_api_call(src.source_id, status="SUCCESS")
@@ -533,6 +535,7 @@ class TestApiCallModel:
 # 5. Constraints
 # ===========================================================================
 
+
 class TestConstraints:
     """
     SQLite does NOT enforce CHECK constraints, so:
@@ -571,17 +574,13 @@ class TestConstraints:
 
     def test_rate_positive_sqltext(self):
         exprs = [
-            str(c.sqltext)
-            for c in ExchangeRate.__table__.constraints
-            if hasattr(c, "sqltext")
+            str(c.sqltext) for c in ExchangeRate.__table__.constraints if hasattr(c, "sqltext")
         ]
         assert any("rate > 0" in e for e in exprs)
 
     def test_different_currencies_sqltext(self):
         exprs = [
-            str(c.sqltext)
-            for c in ExchangeRate.__table__.constraints
-            if hasattr(c, "sqltext")
+            str(c.sqltext) for c in ExchangeRate.__table__.constraints if hasattr(c, "sqltext")
         ]
         assert any("from_currency_id != to_currency_id" in e for e in exprs)
 
@@ -632,7 +631,9 @@ class TestConstraints:
     def test_future_timestamp_accepted(self, session):
         usd, idr, src = _seed_base(session)
         er = make_exchange_rate(
-            usd.currency_id, idr.currency_id, src.source_id,
+            usd.currency_id,
+            idr.currency_id,
+            src.source_id,
             timestamp=datetime(2099, 6, 15, tzinfo=timezone.utc),
         )
         session.add(er)
@@ -644,8 +645,8 @@ class TestConstraints:
 # 6. Relationships  (2.0: plain list, no .all())
 # ===========================================================================
 
-class TestRelationships:
 
+class TestRelationships:
     def test_exchange_rate_from_currency(self, session):
         usd, idr, src = _seed_base(session)
         er = make_exchange_rate(usd.currency_id, idr.currency_id, src.source_id)
@@ -704,10 +705,12 @@ class TestRelationships:
 
     def test_api_source_api_calls_back_populates(self, session):
         _, _, src = _seed_base(session)
-        session.add_all([
-            make_api_call(src.source_id, status="SUCCESS"),
-            make_api_call(src.source_id, status="ERROR"),
-        ])
+        session.add_all(
+            [
+                make_api_call(src.source_id, status="SUCCESS"),
+                make_api_call(src.source_id, status="ERROR"),
+            ]
+        )
         session.flush()
         session.refresh(src)
 
@@ -724,11 +727,13 @@ class TestRelationships:
         session.add(er)
         session.flush()
 
-        session.add(DataQualityMetric(
-            rate_id=er.rate_id,
-            check_name="NULL_CHECK",
-            check_passed=True,
-        ))
+        session.add(
+            DataQualityMetric(
+                rate_id=er.rate_id,
+                check_name="NULL_CHECK",
+                check_passed=True,
+            )
+        )
         session.flush()
         assert _count(session, DataQualityMetric) == 1
 
@@ -754,8 +759,8 @@ class TestRelationships:
 # 7. DataQualityMetric Model
 # ===========================================================================
 
-class TestDataQualityMetricModel:
 
+class TestDataQualityMetricModel:
     def test_create_metric_null_check(self, session):
         usd, idr, src = _seed_base(session)
         er = make_exchange_rate(usd.currency_id, idr.currency_id, src.source_id)
@@ -824,8 +829,8 @@ class TestDataQualityMetricModel:
 # 8. DailySnapshot Model
 # ===========================================================================
 
-class TestDailySnapshotModel:
 
+class TestDailySnapshotModel:
     def test_create_daily_snapshot_all_fields(self, session):
         usd, idr, _ = _seed_base(session)
         snap = make_daily_snapshot(usd.currency_id, idr.currency_id)
@@ -834,9 +839,9 @@ class TestDailySnapshotModel:
 
         fetched = session.query(DailySnapshot).get(snap.snapshot_id)
         assert fetched.snapshot_date == FIXED_DATE
-        assert fetched.rate_open  == Decimal("18100.0")
-        assert fetched.rate_high  == Decimal("18300.0")
-        assert fetched.rate_low   == Decimal("18050.0")
+        assert fetched.rate_open == Decimal("18100.0")
+        assert fetched.rate_high == Decimal("18300.0")
+        assert fetched.rate_low == Decimal("18050.0")
         assert fetched.rate_close == Decimal("18176.5")
         assert fetched.is_anomaly is False
         assert fetched.anomaly_level == "NORMAL"
@@ -844,8 +849,10 @@ class TestDailySnapshotModel:
     def test_daily_snapshot_anomaly_warning(self, session):
         usd, idr, _ = _seed_base(session)
         snap = make_daily_snapshot(
-            usd.currency_id, idr.currency_id,
-            is_anomaly=True, anomaly_level="WARNING",
+            usd.currency_id,
+            idr.currency_id,
+            is_anomaly=True,
+            anomaly_level="WARNING",
         )
         session.add(snap)
         session.flush()
@@ -858,11 +865,14 @@ class TestDailySnapshotModel:
     def test_all_anomaly_levels_accepted(self, session, level):
         usd, idr, _ = _seed_base(session)
         # Use a deterministic date per level to avoid UNIQUE violation
-        level_date = {"NORMAL": date(2025, 2, 1),
-                      "WARNING": date(2025, 2, 2),
-                      "CRITICAL": date(2025, 2, 3)}[level]
+        level_date = {
+            "NORMAL": date(2025, 2, 1),
+            "WARNING": date(2025, 2, 2),
+            "CRITICAL": date(2025, 2, 3),
+        }[level]
         snap = make_daily_snapshot(
-            usd.currency_id, idr.currency_id,
+            usd.currency_id,
+            idr.currency_id,
             snapshot_date=level_date,
             anomaly_level=level,
         )
@@ -904,17 +914,17 @@ class TestDailySnapshotModel:
 # 9. Python Enum values
 # ===========================================================================
 
-class TestEnumValues:
 
+class TestEnumValues:
     def test_api_call_status_enum_values(self):
-        assert ApiCallStatusEnum.SUCCESS.value    == "SUCCESS"
-        assert ApiCallStatusEnum.TIMEOUT.value    == "TIMEOUT"
+        assert ApiCallStatusEnum.SUCCESS.value == "SUCCESS"
+        assert ApiCallStatusEnum.TIMEOUT.value == "TIMEOUT"
         assert ApiCallStatusEnum.RATE_LIMIT.value == "RATE_LIMIT"
-        assert ApiCallStatusEnum.ERROR.value      == "ERROR"
+        assert ApiCallStatusEnum.ERROR.value == "ERROR"
 
     def test_anomaly_level_enum_values(self):
-        assert AnomalyLevelEnum.NORMAL.value   == "NORMAL"
-        assert AnomalyLevelEnum.WARNING.value  == "WARNING"
+        assert AnomalyLevelEnum.NORMAL.value == "NORMAL"
+        assert AnomalyLevelEnum.WARNING.value == "WARNING"
         assert AnomalyLevelEnum.CRITICAL.value == "CRITICAL"
 
     def test_api_call_status_enum_is_str_subclass(self):
@@ -928,8 +938,8 @@ class TestEnumValues:
 # 10. Engine / Session Utilities
 # ===========================================================================
 
-class TestGetDatabaseUrl:
 
+class TestGetDatabaseUrl:
     def test_database_url_takes_precedence(self, monkeypatch):
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/db")
         monkeypatch.delenv("DATABASE_URL_DEV", raising=False)
@@ -941,7 +951,7 @@ class TestGetDatabaseUrl:
         assert "staging" in _get_database_url("staging")
 
     def test_missing_url_raises_environment_error(self, monkeypatch):
-        monkeypatch.delenv("DATABASE_URL",     raising=False)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
         monkeypatch.delenv("DATABASE_URL_DEV", raising=False)
         with pytest.raises(EnvironmentError, match="No database URL found"):
             _get_database_url("dev")
@@ -958,7 +968,6 @@ class TestGetDatabaseUrl:
 
 
 class TestGetEngine:
-
     def test_sqlite_returns_engine(self):
         eng = get_engine(database_url=SQLITE_URL, env="dev")
         assert eng is not None
@@ -977,15 +986,14 @@ class TestGetEngine:
         eng.dispose()
 
     def test_missing_url_raises(self, monkeypatch):
-        monkeypatch.delenv("DATABASE_URL",     raising=False)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
         monkeypatch.delenv("DATABASE_URL_DEV", raising=False)
-        monkeypatch.delenv("APP_ENV",          raising=False)
+        monkeypatch.delenv("APP_ENV", raising=False)
         with pytest.raises(EnvironmentError):
             get_engine()
 
 
 class TestGetSession:
-
     def test_commits_on_clean_exit(self):
         eng = get_engine(database_url=SQLITE_URL, env="dev")
         Base.metadata.create_all(eng)
@@ -994,11 +1002,7 @@ class TestGetSession:
             sess.add(make_currency("NZD", "New Zealand Dollar"))
 
         with get_session(eng) as sess:
-            result = (
-                sess.query(Currency)
-                .filter(Currency.code == "NZD")
-                .one_or_none()
-            )
+            result = sess.query(Currency).filter(Currency.code == "NZD").one_or_none()
             assert result is not None
 
         Base.metadata.drop_all(eng)
@@ -1014,11 +1018,7 @@ class TestGetSession:
                 raise SQLAlchemyError("simulated DB error")
 
         with get_session(eng) as sess:
-            result = (
-                sess.query(Currency)
-                .filter(Currency.code == "MXN")
-                .one_or_none()
-            )
+            result = sess.query(Currency).filter(Currency.code == "MXN").one_or_none()
             assert result is None
 
         Base.metadata.drop_all(eng)
@@ -1034,11 +1034,7 @@ class TestGetSession:
                 raise RuntimeError("unexpected")
 
         with get_session(eng) as sess:
-            result = (
-                sess.query(Currency)
-                .filter(Currency.code == "BRL")
-                .one_or_none()
-            )
+            result = sess.query(Currency).filter(Currency.code == "BRL").one_or_none()
             assert result is None
 
         Base.metadata.drop_all(eng)
@@ -1071,7 +1067,6 @@ class TestGetSession:
 
 
 class TestGetSessionFactory:
-
     def test_returns_session_instance(self):
         eng = get_engine(database_url=SQLITE_URL, env="dev")
         factory = get_session_factory(eng)
@@ -1096,8 +1091,8 @@ class TestGetSessionFactory:
 # 11. Schema utilities
 # ===========================================================================
 
-class TestSchemaUtilities:
 
+class TestSchemaUtilities:
     def test_create_all_tables_idempotent(self):
         eng = get_engine(database_url=SQLITE_URL, env="dev")
         create_all_tables(eng)
@@ -1129,7 +1124,8 @@ class TestSchemaUtilities:
         eng = get_engine(database_url=SQLITE_URL, env="dev")
         eng.dispose()
         with patch.object(
-            eng, "connect",
+            eng,
+            "connect",
             side_effect=OperationalError("no connection", None, None),
         ):
             assert check_connection(eng) is False
@@ -1139,8 +1135,8 @@ class TestSchemaUtilities:
 # 12. TimestampMixin
 # ===========================================================================
 
-class TestTimestampMixin:
 
+class TestTimestampMixin:
     def test_currency_has_timestamps(self):
         cols = {c.name for c in Currency.__table__.columns}
         assert "created_at" in cols

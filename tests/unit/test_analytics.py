@@ -1,6 +1,7 @@
 """Unit tests for analytics"""
 
 import pytest
+
 from src.analytics.trends import TrendAnalyzer
 from src.analytics.volatility import VolatilityCalculator
 

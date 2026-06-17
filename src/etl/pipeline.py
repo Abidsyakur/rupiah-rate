@@ -91,9 +91,7 @@ class ExtractionPipeline:
         all_rates = []
         for result in self.results:
             for rate in result.rates:
-                is_valid, error_msg = self.validator.validate_rate_value(
-                    rate.pair, rate.rate
-                )
+                is_valid, error_msg = self.validator.validate_rate_value(rate.pair, rate.rate)
                 if not is_valid:
                     logger.warning(error_msg)
                     summary["errors"].append(error_msg)

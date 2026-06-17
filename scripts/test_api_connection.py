@@ -58,17 +58,19 @@ try:
     else:
         print(f"[setup] No .env file found at {env_path} (skipping)")
 except ImportError:
-    print("[setup] python-dotenv not installed — relying on shell environment "
-          "variables only. (pip install python-dotenv to enable .env support)")
+    print(
+        "[setup] python-dotenv not installed — relying on shell environment "
+        "variables only. (pip install python-dotenv to enable .env support)"
+    )
 
 print()
 
 from src.etl.extractors import FREDExtractor, YFinanceExtractor  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Pretty-print helpers
 # ---------------------------------------------------------------------------
+
 
 def _print_header(title: str) -> None:
     print("=" * 70)
@@ -103,6 +105,7 @@ def _print_result(result: dict) -> bool:
 # yfinance test
 # ---------------------------------------------------------------------------
 
+
 def test_yfinance() -> bool:
     """
     Test the yfinance library connection.
@@ -115,6 +118,7 @@ def test_yfinance() -> bool:
 
     try:
         import yfinance
+
         print(f"  yfinance version: {yfinance.__version__}")
     except ImportError:
         print("  [ERROR] 'yfinance' is not installed.")
@@ -144,6 +148,7 @@ def test_yfinance() -> bool:
 # FRED test
 # ---------------------------------------------------------------------------
 
+
 def test_fred() -> bool:
     """
     Test the FRED API connection using FRED_API_KEY from the environment.
@@ -161,8 +166,7 @@ def test_fred() -> bool:
     if not api_key:
         print("  [WARN] FRED_API_KEY is not set in the environment.")
         print("         Set it via .env or: export FRED_API_KEY=your_key_here")
-        print("         Get a free key at: "
-              "https://fred.stlouisfed.org/docs/api/api_key.html")
+        print("         Get a free key at: " "https://fred.stlouisfed.org/docs/api/api_key.html")
         print()
         return False
 
@@ -177,11 +181,12 @@ def test_fred() -> bool:
         return False
 
     pairs = extractor.SUPPORTED_PAIRS  # currently: ["USD_IDR"]
-    print(f"  Testing pairs: {pairs}  (FRED series: DEXINUS, "
-          f"frequency={extractor._frequency!r}, "
-          f"aggregation_method={extractor._aggregation_method!r})")
-    print("  Note: FRED = monthly/annual aggregates (project decision); "
-          "yfinance = daily.")
+    print(
+        f"  Testing pairs: {pairs}  (FRED series: DEXINUS, "
+        f"frequency={extractor._frequency!r}, "
+        f"aggregation_method={extractor._aggregation_method!r})"
+    )
+    print("  Note: FRED = monthly/annual aggregates (project decision); " "yfinance = daily.")
     print()
 
     try:
@@ -199,6 +204,7 @@ def test_fred() -> bool:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(

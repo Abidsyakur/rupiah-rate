@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 
 RETRY_CONFIG: Dict[str, Any] = {
     "max_attempts": 3,
-    "base_delay": 1.0,       # seconds
-    "max_delay": 30.0,       # seconds
+    "base_delay": 1.0,  # seconds
+    "max_delay": 30.0,  # seconds
     "exponential_base": 2,
     "jitter": True,
 }
@@ -70,7 +70,7 @@ YFINANCE_TICKER_MAP: Dict[str, str] = {
 # extractor, which maps 1 pair -> 1 FRED series.
 FRED_SERIES_MAP: Dict[str, str] = {
     "EUR_IDR": "DEXEUIDR",
-    "USD_IDR": "CCUSMA02IDM618N",   # Indonesian Rupiahs to One U.S. Dollar (daily)
+    "USD_IDR": "CCUSMA02IDM618N",  # Indonesian Rupiahs to One U.S. Dollar (daily)
 }
 
 FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
@@ -80,9 +80,9 @@ RATE_BOUNDS: Dict[str, tuple[float, float]] = {
     "USD_IDR": (10_000.0, 25_000.0),
     "EUR_IDR": (10_000.0, 30_000.0),
     "GBP_IDR": (15_000.0, 35_000.0),
-    "JPY_IDR": (50.0,     250.0),
-    "SGD_IDR": (8_000.0,  20_000.0),
-    "AUD_IDR": (8_000.0,  20_000.0),
+    "JPY_IDR": (50.0, 250.0),
+    "SGD_IDR": (8_000.0, 20_000.0),
+    "AUD_IDR": (8_000.0, 20_000.0),
 }
 
 DEFAULT_BOUNDS = (0.0, 100_000.0)  # fallback for unknown pairs
@@ -90,6 +90,7 @@ DEFAULT_BOUNDS = (0.0, 100_000.0)  # fallback for unknown pairs
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ExchangeRate:
@@ -221,6 +222,7 @@ def with_retry(
 # Validation helpers
 # ---------------------------------------------------------------------------
 
+
 def validate_rate(pair: str, rate: Any) -> tuple[float, float]:
     """
     Validate and score a raw rate value.
@@ -276,6 +278,7 @@ def validate_rate(pair: str, rate: Any) -> tuple[float, float]:
 # ---------------------------------------------------------------------------
 # Abstract base class
 # ---------------------------------------------------------------------------
+
 
 class ExchangeRateExtractor(ABC):
     """
@@ -349,6 +352,7 @@ class ExchangeRateExtractor(ABC):
 # ---------------------------------------------------------------------------
 # Yfinance extractor
 # ---------------------------------------------------------------------------
+
 
 class YFinanceExtractor(ExchangeRateExtractor):
     """
@@ -471,6 +475,7 @@ class YFinanceExtractor(ExchangeRateExtractor):
 # ---------------------------------------------------------------------------
 # FRED extractor
 # ---------------------------------------------------------------------------
+
 
 class FREDExtractor(ExchangeRateExtractor):
     """
@@ -622,9 +627,7 @@ class FREDExtractor(ExchangeRateExtractor):
 
         observations = payload.get("observations", [])
         if not observations:
-            raise ValueError(
-                f"[fred] No observations returned for series {series_id} ({pair})."
-            )
+            raise ValueError(f"[fred] No observations returned for series {series_id} ({pair}).")
 
         # Walk observations newest-first, skipping incomplete-period "."
         # sentinels (e.g. the current month before it has closed).
@@ -718,6 +721,7 @@ class FREDExtractor(ExchangeRateExtractor):
 # Convenience factory
 # ---------------------------------------------------------------------------
 
+
 def get_extractor(source: str, **kwargs: Any) -> ExchangeRateExtractor:
     """
     Factory that returns the correct extractor for a given source name.
@@ -750,7 +754,6 @@ def get_extractor(source: str, **kwargs: Any) -> ExchangeRateExtractor:
     }
     if source not in registry:
         raise ValueError(
-            f"Unknown extractor source {source!r}. "
-            f"Valid options: {sorted(registry.keys())}"
+            f"Unknown extractor source {source!r}. " f"Valid options: {sorted(registry.keys())}"
         )
     return registry[source](**kwargs)
