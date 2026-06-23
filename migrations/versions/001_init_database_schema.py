@@ -8,7 +8,7 @@ Revision  : 001_initial_schema
 Created   : 2025-01-15
 Author    : rupiah-exchange-rate-intelligence
 Schema Ref: docs/SCHEMA.md (ADR-002)
-Models Ref: src/models/database.py
+Models Ref: src/utils/database.py
 
 What this migration does
 ------------------------
@@ -103,14 +103,14 @@ _SEED_CURRENCIES: list[dict[str, Any]] = [
 _SEED_API_SOURCES: list[dict[str, Any]] = [
     {
         "source_name":    "yfinance",
-        "api_endpoint":   "https://finance.yahoo.com",
+        "api_endpoint":   "https://query1.finance.yahoo.com/v8/finance/chart",
         "retry_strategy": "exponential_backoff_max3",
         "rate_limit":     2000,        # unofficial; conservative estimate
         "is_active":      True,
     },
     {
         "source_name":    "fred",
-        "api_endpoint":   "https://api.stlouisfed.org/fred",
+        "api_endpoint":   "https://api.stlouisfed.org/fred/series/observations",
         "retry_strategy": "exponential_backoff_max3",
         "rate_limit":     120,         # FRED documented limit: 120 req/min
         "is_active":      True,

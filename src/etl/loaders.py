@@ -16,7 +16,7 @@ A rate is uniquely identified by the 4-tuple::
     (from_currency_id, to_currency_id, timestamp, source_id)
 
 This matches the ``uq_exchange_rates_pair_timestamp_source`` unique
-constraint on :class:`src.models.database.ExchangeRate`. On each load:
+constraint on :class:`src.utils.database.ExchangeRate`. On each load:
 
     * If no row matches the key       -> INSERT
     * If a row matches and the new
@@ -41,7 +41,7 @@ Example usage
 --------------
     from datetime import datetime, timezone
     from src.etl.loaders import ExchangeRateLoader
-    from src.models.database import get_engine, get_session
+    from src.utils.database import get_engine, get_session
 
     loader = ExchangeRateLoader()
 
