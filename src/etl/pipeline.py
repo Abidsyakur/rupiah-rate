@@ -12,7 +12,7 @@ Design notes
 ------------
 - This module integrates Features 1-4 of the project:
     Feature 1: ``src.etl.extractors``  (YFinanceExtractor, FREDExtractor)
-    Feature 2: ``utils.database`` (ORM models, get_engine/get_session)
+    Feature 2: ``src.utils.database`` (ORM models, get_engine/get_session)
     Feature 3: ``src.etl.validators``  (ExchangeRateValidator)
     Feature 4: ``src.etl.loaders``     (ExchangeRateLoader)
 - ``src.etl.loaders`` already defines its own ``LoadResult`` dataclass (rows
@@ -78,6 +78,12 @@ from src.etl.extractors import ExchangeRateExtractor, get_extractor
 from src.etl.loaders import ExchangeRateLoader
 from src.etl.loaders import LoadResult as LoaderRunResult
 from src.etl.validators import ExchangeRateValidator, ValidationResult
+
+# Database utilities — imported at module level so unit tests can patch
+# them via ``src.etl.pipeline.get_engine`` / ``src.etl.pipeline._get_db_session``
+# without fighting Python's deferred-import scoping rules.
+from src.utils.database import get_engine as get_engine
+from src.utils.database import get_session as _get_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -440,7 +446,7 @@ class EtlPipeline(BasePipeline):
 
     Integrates:
         - ``src.etl.extractors``  (Feature 1): ``YFinanceExtractor`` / ``FREDExtractor``
-        - ``utils.database`` (Feature 2): ORM session for the load stage
+        - ``src.utils.database`` (Feature 2): ORM session for the load stage
         - ``src.etl.validators``  (Feature 3): ``ExchangeRateValidator``
         - ``src.etl.loaders``     (Feature 4): ``ExchangeRateLoader``
 
@@ -587,7 +593,7 @@ class EtlPipeline(BasePipeline):
             FK to ``ApiSource.source_id`` for audit-trail purposes.
         session:
             An active SQLAlchemy session for the load stage. If omitted,
-            a new session is opened via ``utils.database.get_session``
+            a new session is opened via ``src.utils.database.get_session``
             and committed/closed automatically; if provided, the caller
             owns the commit/rollback lifecycle.
         start_date, end_date:
@@ -671,9 +677,8 @@ class EtlPipeline(BasePipeline):
             # before reaching load (extract/validate producing zero usable
             # records) never require a database connection at all.
             if owns_session:
-                from utils.database import get_engine, get_session as _get_session
                 engine = get_engine()
-                session_cm = _get_session(engine)
+                session_cm = _get_db_session(engine)
                 session = session_cm.__enter__()
 
             load_result = self.load(session, validate_result.validated_rates, source_id)

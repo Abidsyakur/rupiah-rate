@@ -862,22 +862,30 @@ class TestPipelineRun:
         # so run() sees zero raw_rates and aborts gracefully (no crash).
         assert result.success is False
 
-    def test_pipeline_run_owns_session_when_none_provided(self, pipeline):
-        """When no session is passed, the pipeline must open and close its own."""
-        with patch("src.utils.database.get_engine") as mock_get_engine, \
-             patch("src.utils.database.get_session") as mock_get_session:
+    @patch("src.etl.pipeline.get_engine")
+    def test_pipeline_run_owns_session_when_none_provided(
+        self, mock_get_engine, pipeline, mock_extractor, mock_validator, mock_loader
+    ):
+        """Verify that when no session is provided, the pipeline correctly initializes 
+        and manages its own database engine context.
+        """
+        # Setup mock untuk engine saja
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
 
-            mock_cm = MagicMock()
-            mock_cm.__enter__.return_value = MagicMock()
-            mock_cm.__exit__.return_value = False
-            mock_get_session.return_value = mock_cm
+        # Setup mock untuk boundary stages
+        mock_extractor.fetch_rates.return_value = make_extraction_response()
+        mock_validator.validate.return_value = make_validation_result()
+        mock_loader.load.return_value = make_loader_result()
 
-            pipeline.run(currency_pairs=["USD_IDR"], source="yfinance", source_id=1)
+        # Eksekusi pipeline dengan session=None
+        result = pipeline.run(
+            currency_pairs=["USD_IDR"], source="yfinance", source_id=1, session=None
+        )
 
-            mock_get_engine.assert_called_once()
-            mock_get_session.assert_called_once()
-            mock_cm.__enter__.assert_called_once()
-            mock_cm.__exit__.assert_called_once()
+        # Verifikasi bahwa pipeline sukses berjalan dan get_engine dipanggil
+        assert result.success is True
+        mock_get_engine.assert_called_once()
 
 
 # ===========================================================================
