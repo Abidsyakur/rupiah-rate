@@ -7,7 +7,7 @@ Architecture
 ------------
 Airflow 3.x and the pipeline share one venv. SQLAlchemy is pinned to
 1.4.51 project-wide (apache-airflow requires sqlalchemy<2.0 in every
-released version) — src/models/database.py is written in 1.4 style to match.
+released version) — src/utils/database.py is written in 1.4 style to match.
 
 DAGs
 ----

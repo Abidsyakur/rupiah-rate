@@ -30,8 +30,8 @@ Key SQLAlchemy 1.4 patterns used (deliberately, NOT 2.0 style)
 
 Usage
 -----
-    from src.models.database import get_engine, get_session, Base
-    from src.models.database import Currency, ExchangeRate
+    from src.utils.database import get_engine, get_session, Base
+    from src.utils.database import Currency, ExchangeRate
     from sqlalchemy import select
 
     engine = get_engine()
@@ -84,21 +84,18 @@ logger = logging.getLogger(__name__)
 # Python-side Enum definitions (used for type hints and validation)
 # ---------------------------------------------------------------------------
 
-
 class ApiCallStatusEnum(str, PyEnum):
     """Valid status values for :class:`ApiCall.status`."""
-
-    SUCCESS = "SUCCESS"
-    TIMEOUT = "TIMEOUT"
+    SUCCESS    = "SUCCESS"
+    TIMEOUT    = "TIMEOUT"
     RATE_LIMIT = "RATE_LIMIT"
-    ERROR = "ERROR"
+    ERROR      = "ERROR"
 
 
 class AnomalyLevelEnum(str, PyEnum):
     """Valid anomaly severity levels for :class:`DailySnapshot.anomaly_level`."""
-
-    NORMAL = "NORMAL"
-    WARNING = "WARNING"
+    NORMAL   = "NORMAL"
+    WARNING  = "WARNING"
     CRITICAL = "CRITICAL"
 
 
@@ -106,35 +103,26 @@ class AnomalyLevelEnum(str, PyEnum):
 # Environment / connection-pool config
 # ---------------------------------------------------------------------------
 
-_ENV_DEV = "dev"
+_ENV_DEV     = "dev"
 _ENV_STAGING = "staging"
-_ENV_PROD = "prod"
-_VALID_ENVS = {_ENV_DEV, _ENV_STAGING, _ENV_PROD}
+_ENV_PROD    = "prod"
+_VALID_ENVS  = {_ENV_DEV, _ENV_STAGING, _ENV_PROD}
 
 _POOL_CONFIG: dict = {
     _ENV_DEV: {
-        "pool_size": 2,
-        "max_overflow": 3,
-        "pool_timeout": 30,
-        "pool_recycle": 1800,
-        "pool_pre_ping": True,
-        "echo": True,
+        "pool_size": 2, "max_overflow": 3,
+        "pool_timeout": 30, "pool_recycle": 1800,
+        "pool_pre_ping": True, "echo": True,
     },
     _ENV_STAGING: {
-        "pool_size": 5,
-        "max_overflow": 10,
-        "pool_timeout": 30,
-        "pool_recycle": 1800,
-        "pool_pre_ping": True,
-        "echo": False,
+        "pool_size": 5, "max_overflow": 10,
+        "pool_timeout": 30, "pool_recycle": 1800,
+        "pool_pre_ping": True, "echo": False,
     },
     _ENV_PROD: {
-        "pool_size": 10,
-        "max_overflow": 20,
-        "pool_timeout": 30,
-        "pool_recycle": 900,
-        "pool_pre_ping": True,
-        "echo": False,
+        "pool_size": 10, "max_overflow": 20,
+        "pool_timeout": 30, "pool_recycle": 900,
+        "pool_pre_ping": True, "echo": False,
     },
 }
 
@@ -164,7 +152,9 @@ def _get_database_url(env: Optional[str] = None) -> str:
     """
     resolved = (env or os.getenv("APP_ENV", _ENV_DEV)).lower()
     if resolved not in _VALID_ENVS:
-        raise ValueError(f"Unknown APP_ENV {resolved!r}. Valid options: {sorted(_VALID_ENVS)}")
+        raise ValueError(
+            f"Unknown APP_ENV {resolved!r}. Valid options: {sorted(_VALID_ENVS)}"
+        )
     url = os.getenv("DATABASE_URL") or os.getenv(f"DATABASE_URL_{resolved.upper()}")
     if not url:
         raise EnvironmentError(
@@ -190,7 +180,6 @@ source of truth for schema creation and Alembic autogenerate.
 # ---------------------------------------------------------------------------
 # Timestamp mixin (1.4 style: plain Column assignments)
 # ---------------------------------------------------------------------------
-
 
 class TimestampMixin:
     """
@@ -218,7 +207,6 @@ class TimestampMixin:
 # ===========================================================================
 # Models
 # ===========================================================================
-
 
 class Currency(TimestampMixin, Base):
     """
@@ -451,28 +439,24 @@ class ExchangeRate(TimestampMixin, Base):
 
     # ---- Table-level constraints & indexes ----
     __table_args__ = (
-        CheckConstraint("rate > 0", name="ck_exchange_rates_rate_positive"),
-        CheckConstraint(
-            "from_currency_id != to_currency_id", name="ck_exchange_rates_different_currencies"
-        ),
+        CheckConstraint("rate > 0",
+                        name="ck_exchange_rates_rate_positive"),
+        CheckConstraint("from_currency_id != to_currency_id",
+                        name="ck_exchange_rates_different_currencies"),
         CheckConstraint(
             "data_quality_score IS NULL OR "
             "(data_quality_score >= 0.00 AND data_quality_score <= 1.00)",
             name="ck_exchange_rates_quality_score_range",
         ),
         UniqueConstraint(
-            "from_currency_id",
-            "to_currency_id",
-            "timestamp",
-            "source_id",
+            "from_currency_id", "to_currency_id", "timestamp", "source_id",
             name="uq_exchange_rates_pair_timestamp_source",
         ),
-        Index(
-            "idx_exchange_rates_pair_timestamp", "from_currency_id", "to_currency_id", "timestamp"
-        ),
-        Index("idx_exchange_rates_timestamp", "timestamp"),
-        Index("idx_exchange_rates_source_id", "source_id"),
-        Index("idx_exchange_rates_is_valid", "is_valid"),
+        Index("idx_exchange_rates_pair_timestamp",
+              "from_currency_id", "to_currency_id", "timestamp"),
+        Index("idx_exchange_rates_timestamp",   "timestamp"),
+        Index("idx_exchange_rates_source_id",   "source_id"),
+        Index("idx_exchange_rates_is_valid",    "is_valid"),
     )
 
     # ---- Relationships ----
@@ -594,7 +578,7 @@ class ApiCall(Base):
     # ---- Table-level constraints & indexes ----
     __table_args__ = (
         Index("idx_api_calls_source_timestamp", "source_id", "timestamp"),
-        Index("idx_api_calls_status", "status"),
+        Index("idx_api_calls_status",           "status"),
     )
 
     # ---- Relationships ----
@@ -605,7 +589,10 @@ class ApiCall(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<ApiCall id={self.call_id} " f"source_id={self.source_id} status={self.status!r}>"
+        return (
+            f"<ApiCall id={self.call_id} "
+            f"source_id={self.source_id} status={self.status!r}>"
+        )
 
 
 class DataQualityMetric(Base):
@@ -670,10 +657,11 @@ class DataQualityMetric(Base):
     # ---- Table-level constraints & indexes ----
     __table_args__ = (
         CheckConstraint(
-            "anomaly_score IS NULL OR " "(anomaly_score >= 0.00 AND anomaly_score <= 1.00)",
+            "anomaly_score IS NULL OR "
+            "(anomaly_score >= 0.00 AND anomaly_score <= 1.00)",
             name="ck_data_quality_anomaly_score_range",
         ),
-        Index("idx_data_quality_rate_check", "rate_id", "check_name"),
+        Index("idx_data_quality_rate_check",   "rate_id", "check_name"),
         Index("idx_data_quality_check_passed", "check_passed"),
     )
 
@@ -750,14 +738,18 @@ class DailySnapshot(TimestampMixin, Base):
     )
 
     # ---- OHLCV ----
-    rate_open = Column(Numeric(12, 6), nullable=False, doc="Opening rate for the day.")
-    rate_high = Column(Numeric(12, 6), nullable=False, doc="Highest rate for the day.")
-    rate_low = Column(Numeric(12, 6), nullable=False, doc="Lowest rate for the day.")
-    rate_close = Column(Numeric(12, 6), nullable=False, doc="Closing rate for the day.")
-    rate_avg = Column(Numeric(12, 6), nullable=False, doc="Average rate for the day.")
+    rate_open = Column(Numeric(12, 6), nullable=False,
+                       doc="Opening rate for the day.")
+    rate_high = Column(Numeric(12, 6), nullable=False,
+                       doc="Highest rate for the day.")
+    rate_low = Column(Numeric(12, 6), nullable=False,
+                      doc="Lowest rate for the day.")
+    rate_close = Column(Numeric(12, 6), nullable=False,
+                        doc="Closing rate for the day.")
+    rate_avg = Column(Numeric(12, 6), nullable=False,
+                      doc="Average rate for the day.")
     rate_ma7 = Column(
-        Numeric(12, 6),
-        nullable=True,
+        Numeric(12, 6), nullable=True,
         doc="7-day simple moving average (None for first 6 days).",
     )
 
@@ -786,20 +778,18 @@ class DailySnapshot(TimestampMixin, Base):
 
     # ---- Table-level constraints & indexes ----
     __table_args__ = (
-        CheckConstraint("rate_high >= rate_low", name="ck_daily_snapshots_high_gte_low"),
+        CheckConstraint("rate_high >= rate_low",
+                        name="ck_daily_snapshots_high_gte_low"),
         CheckConstraint(
             "rate_open > 0 AND rate_high > 0 AND rate_low > 0 AND rate_close > 0",
             name="ck_daily_snapshots_rates_positive",
         ),
         UniqueConstraint(
-            "snapshot_date",
-            "from_currency_id",
-            "to_currency_id",
+            "snapshot_date", "from_currency_id", "to_currency_id",
             name="uq_daily_snapshots_date_pair",
         ),
-        Index(
-            "idx_daily_snapshots_date_pair", "snapshot_date", "from_currency_id", "to_currency_id"
-        ),
+        Index("idx_daily_snapshots_date_pair",
+              "snapshot_date", "from_currency_id", "to_currency_id"),
         Index("idx_daily_snapshots_is_anomaly", "is_anomaly"),
     )
 
@@ -814,7 +804,6 @@ class DailySnapshot(TimestampMixin, Base):
 # ===========================================================================
 # Engine factory
 # ===========================================================================
-
 
 def get_engine(
     database_url: Optional[str] = None,
@@ -853,12 +842,9 @@ def get_engine(
     pool_cfg = dict(_POOL_CONFIG.get(resolved_env, _POOL_CONFIG[_ENV_DEV]))
     echo = pool_cfg.pop("echo", False)
 
-    logger.info(
-        "Creating engine env=%r echo=%s url=%s",
-        resolved_env,
-        echo,
-        url.split("@")[-1] if "@" in url else url,
-    )
+    logger.info("Creating engine env=%r echo=%s url=%s",
+                resolved_env, echo,
+                url.split("@")[-1] if "@" in url else url)
 
     if url.startswith("sqlite"):
         # In-memory SQLite (":memory:" / "sqlite://") creates a *new*,
@@ -889,7 +875,6 @@ def get_engine(
     # enabled per-connection via PRAGMA. Without this, ondelete=RESTRICT/
     # CASCADE and FK existence checks are silently ignored.
     if url.startswith("sqlite"):
-
         @event.listens_for(engine, "connect")
         def _enable_sqlite_fk(dbapi_conn, _record) -> None:  # type: ignore[type-arg]
             cur = dbapi_conn.cursor()
@@ -902,7 +887,6 @@ def get_engine(
 # ===========================================================================
 # Session utilities  (works for both 1.4 legacy query() and select())
 # ===========================================================================
-
 
 def get_session_factory(engine: Engine) -> sessionmaker:
     """
@@ -976,7 +960,6 @@ def get_session(engine: Engine) -> Generator[Session, None, None]:
 # ===========================================================================
 # Schema utilities
 # ===========================================================================
-
 
 def create_all_tables(engine: Engine) -> None:
     """

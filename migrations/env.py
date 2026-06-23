@@ -24,7 +24,7 @@ from alembic import context
 # ---------------------------------------------------------------------------
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from models.database import Base  # noqa: E402
+from src.utils.database import Base  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Alembic Config object
