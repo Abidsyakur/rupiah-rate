@@ -85,7 +85,7 @@ from typing import Any, Dict, List, Optional, Union
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from utils.database import ApiCall, ExchangeRate
+from src.utils.database import ApiCall, ExchangeRate
 
 logger = logging.getLogger(__name__)
 
