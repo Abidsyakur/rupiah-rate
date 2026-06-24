@@ -1,28 +1,16 @@
--- Staging: Clean and prepare raw exchange rate data
-
-{{
-    config(
-        materialized='table',
-        schema='staging',
-        tags=['daily']
-    )
-}}
-
+-- stg_exchange_rates.sql
 SELECT
-    id,
-    date,
-    currency_pair,
-    opening_rate,
-    closing_rate,
-    highest_rate,
-    lowest_rate,
-    volume,
-    source,
+    rate_id,
+    from_currency_id,
+    to_currency_id,
+    rate,
+    CAST(timestamp AS DATE) as rate_date,
+    EXTRACT(HOUR FROM timestamp) as rate_hour,
+    source_id,
+    data_quality_score,
+    is_valid,
     created_at,
-    updated_at,
-    ROW_NUMBER() OVER (PARTITION BY date, currency_pair, source ORDER BY updated_at DESC) as rn
+    updated_at
 FROM {{ source('raw', 'exchange_rates') }}
-WHERE date IS NOT NULL
-    AND closing_rate IS NOT NULL
-
-QUALIFY rn = 1
+WHERE is_valid = TRUE
+    AND data_quality_score >= 0.7

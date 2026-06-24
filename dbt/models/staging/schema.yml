@@ -1,0 +1,26 @@
+# models/staging/schema.yml
+version: 2
+
+sources:
+  - name: raw
+    schema: public
+    description: Raw data from ETL pipeline
+    tables:
+      - name: exchange_rates
+        description: Exchange rates extracted from APIs
+      - name: api_calls
+        description: API call audit trail
+
+models:
+  - name: stg_exchange_rates
+    description: Clean exchange rates
+    columns:
+      - name: rate_id
+        description: Primary key
+        tests:
+          - unique
+          - not_null
+      - name: rate
+        description: Exchange rate value
+        tests:
+          - not_null
