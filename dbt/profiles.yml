@@ -3,9 +3,9 @@ rupiah:
   outputs:
     dev:
       type: postgres
-      host: "{{ env_var('DB_HOST') }}"
-      user: "{{ env_var('DB_USER') }}"
-      password: "{{ env_var('DB_PASSWORD') }}"
+      host: rupiah-postgres
+      user: postgres
+      password: postgres
       port: 5432
       dbname: rupiah_db
       schema: analytics
@@ -14,9 +14,9 @@ rupiah:
     
     prod:
       type: postgres
-      host: "{{ env_var('DB_HOST') }}"
-      user: "{{ env_var('DB_USER') }}"
-      password: "{{ env_var('DB_PASSWORD') }}"
+      host: localhost
+      user: postgres
+      password: postgres
       port: 5432
       dbname: rupiah_prod
       schema: analytics
