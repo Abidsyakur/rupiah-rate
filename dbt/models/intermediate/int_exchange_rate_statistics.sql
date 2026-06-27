@@ -9,47 +9,6 @@ Description :
     Calculates rolling technical indicators and statistical metrics for each
     currency pair, building on the daily OHLC summaries produced by
     int_daily_exchange_rates.
-
-    Indicators calculated (all per currency_pair + source_name):
-    ─────────────────────────────────────────────────────────────
-    Moving Averages (Simple)
-      ma_7d       7-day   simple moving average of rate_close
-      ma_14d      14-day  simple moving average of rate_close
-      ma_30d      30-day  simple moving average of rate_close
-
-    Exponential Moving Average
-      ema_7d      7-day EMA approximated via 2/(N+1) weighting with window
-                  Note: true EMA requires recursive calculation not supported
-                  natively in SQL windows; we use a weighted average
-                  approximation that gives more weight to recent prices.
-
-    Bollinger Band components (20-day)
-      bb_middle   20-day simple moving average (middle band)
-      bb_std      20-day population standard deviation of rate_close
-      bb_upper    bb_middle + (2 × bb_std)   upper band
-      bb_lower    bb_middle – (2 × bb_std)   lower band
-      bb_width    (bb_upper – bb_lower) / bb_middle × 100  (normalised width)
-      bb_position where rate_close sits within the band (0 = lower, 1 = upper)
-
-    Momentum
-      roc_7d      Rate of Change over 7 days:
-                  (today_close – close_7d_ago) / close_7d_ago × 100
-      roc_30d     Rate of Change over 30 days
-
-    Volatility
-      volatility_7d   Std dev of daily_change_pct over last 7 days
-      volatility_30d  Std dev of daily_change_pct over last 30 days
-      atr_14d         Average True Range (14 days) — approximated as
-                      avg(daily_range) over last 14 days in FX context
-
-    Trend signals
-      above_ma_7d     TRUE if rate_close > ma_7d
-      above_ma_30d    TRUE if rate_close > ma_30d
-      golden_cross    TRUE on days where ma_7d crosses ABOVE ma_30d
-                      (previous day: ma_7d_prev < ma_30d_prev, today: ma_7d >= ma_30d)
-      death_cross     TRUE on days where ma_7d crosses BELOW ma_30d
-
-Downstream  : marts/fct_daily_rates.sql, marts/fct_market_signals.sql
 ================================================================================
 */
 
@@ -157,7 +116,7 @@ with_windows as (
         )                                                   as atr_14d,
 
         -- ----------------------------------------------------------------
-        -- Lag values for Rate of Change and cross detection
+        -- Lag values for Rate of Change
         -- ----------------------------------------------------------------
 
         lag(rate_close, 7) over (
@@ -170,29 +129,6 @@ with_windows as (
             order by rate_date
         )                                                   as close_30d_ago,
 
-        -- Previous day's MA values (for golden/death cross detection)
-        lag(
-            avg(rate_close) over (
-                partition by currency_pair, source_name
-                order by rate_date
-                rows between 6 preceding and current row
-            )
-        , 1) over (
-            partition by currency_pair, source_name
-            order by rate_date
-        )                                                   as ma_7d_prev,
-
-        lag(
-            avg(rate_close) over (
-                partition by currency_pair, source_name
-                order by rate_date
-                rows between 29 preceding and current row
-            )
-        , 1) over (
-            partition by currency_pair, source_name
-            order by rate_date
-        )                                                   as ma_30d_prev,
-
         -- Row number within the pair for "minimum history" guards
         row_number() over (
             partition by currency_pair, source_name
@@ -204,7 +140,30 @@ with_windows as (
 ),
 
 -- -------------------------------------------------------------------------
--- Step 2: derived indicators that depend on the Step 1 window values
+-- Step 1.5: Hitung nilai LAG dari MA yang sudah terbentuk (Mencegah Nested Window)
+-- -------------------------------------------------------------------------
+with_lags as (
+
+    select
+        *,
+        
+        -- Mengambil nilai MA hari sebelumnya dengan aman tanpa nesting fungsi
+        lag(ma_7d, 1) over (
+            partition by currency_pair, source_name
+            order by rate_date
+        )                                                   as ma_7d_prev,
+
+        lag(ma_30d, 1) over (
+            partition by currency_pair, source_name
+            order by rate_date
+        )                                                   as ma_30d_prev
+
+    from with_windows
+
+),
+
+-- -------------------------------------------------------------------------
+-- Step 2: derived indicators that depend on the Step 1 & 1.5 window values
 -- -------------------------------------------------------------------------
 with_indicators as (
 
@@ -292,7 +251,7 @@ with_indicators as (
             else false
         end                                                  as death_cross
 
-    from with_windows
+    from with_lags -- 👈 Diubah untuk mengambil data dari CTE with_lags
 
 ),
 
