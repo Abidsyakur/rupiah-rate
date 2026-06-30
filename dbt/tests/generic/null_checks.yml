@@ -1,11 +1,144 @@
-# tests/generic/null_checks.yml
 version: 2
 
-tests:
-  - not_null:
-      columns:
-        - rate_id
-        - from_currency_id
-        - to_currency_id
-        - rate
-        - timestamp
+# =============================================================================
+# tests/generic/null_checks.yml
+# =============================================================================
+# Centralised reference for not_null test coverage across the project.
+#
+# These are dbt's built-in `not_null` generic test, applied consistently
+# across staging, intermediate, and marts layers. This file exists so that
+# null-check coverage can be audited in one place rather than scattered
+# across five separate schema.yml files.
+#
+# Note: these tests are also declared inline in each layer's schema.yml
+# (dbt requires column tests to live alongside the model they apply to
+# for `dbt docs generate` to render correctly). This file is the
+# project's single source of truth for WHICH columns are null-critical
+# and WHY — keep it in sync when adding new required columns.
+# =============================================================================
+
+models:
+
+  # ---------------------------------------------------------------------
+  # Staging layer — null checks on raw, cleaned columns
+  # ---------------------------------------------------------------------
+
+  - name: stg_currencies
+    columns:
+      - name: currency_id
+        tests: [not_null]
+      - name: currency_code
+        tests: [not_null]
+      - name: currency_name
+        tests: [not_null]
+
+  - name: stg_api_sources
+    columns:
+      - name: source_id
+        tests: [not_null]
+      - name: source_name
+        tests: [not_null]
+
+  - name: stg_exchange_rates
+    columns:
+      - name: rate_id
+        tests: [not_null]
+      - name: from_currency_id
+        tests: [not_null]
+      - name: to_currency_id
+        tests: [not_null]
+      - name: source_id
+        tests: [not_null]
+      - name: rate
+        description: A null rate would corrupt every downstream OHLC and indicator calculation.
+        tests: [not_null]
+      - name: rate_timestamp
+        description: Required for all date-based partitioning and the entire intermediate layer's window functions.
+        tests: [not_null]
+
+  - name: stg_api_calls
+    columns:
+      - name: call_id
+        tests: [not_null]
+      - name: source_id
+        tests: [not_null]
+      - name: status
+        tests: [not_null]
+
+  - name: stg_data_quality_metrics
+    columns:
+      - name: metric_id
+        tests: [not_null]
+      - name: rate_id
+        tests: [not_null]
+      - name: check_name
+        tests: [not_null]
+      - name: check_passed
+        tests: [not_null]
+
+  # ---------------------------------------------------------------------
+  # Intermediate layer — null checks on calculated keys
+  # ---------------------------------------------------------------------
+
+  - name: int_daily_exchange_rates
+    columns:
+      - name: daily_rate_id
+        tests: [not_null]
+      - name: rate_open
+        description: Every aggregated day must have an open value by construction; NULL here indicates a join bug.
+        tests: [not_null]
+      - name: rate_close
+        tests: [not_null]
+
+  - name: int_api_performance
+    columns:
+      - name: perf_id
+        tests: [not_null]
+      - name: total_calls
+        tests: [not_null]
+
+  - name: int_quality_summary
+    columns:
+      - name: quality_summary_id
+        tests: [not_null]
+      - name: total_rates_evaluated
+        tests: [not_null]
+
+  # ---------------------------------------------------------------------
+  # Marts layer — null checks on business-facing keys
+  # ---------------------------------------------------------------------
+
+  - name: dim_currencies
+    columns:
+      - name: currency_id
+        tests: [not_null]
+      - name: currency_code
+        tests: [not_null]
+
+  - name: dim_api_sources
+    columns:
+      - name: source_id
+        tests: [not_null]
+      - name: source_name
+        tests: [not_null]
+
+  - name: fct_exchange_rates
+    columns:
+      - name: rate_id
+        tests: [not_null]
+      - name: rate
+        tests: [not_null]
+      - name: quality_flag
+        description: Every row must resolve to RED/YELLOW/GREEN — a NULL here means the CASE expression has a gap.
+        tests: [not_null]
+
+  - name: fct_daily_snapshots
+    columns:
+      - name: snapshot_id
+        tests: [not_null]
+      - name: rate_open
+        tests: [not_null]
+      - name: rate_close
+        tests: [not_null]
+      - name: quality_flag
+        tests: [not_null]

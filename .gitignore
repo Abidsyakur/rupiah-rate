@@ -136,6 +136,48 @@ celerybeat.pid
 *.aof
 *.pid
 
+# ==============================================================================
+# dbt Configuration
+# ==============================================================================
+# Project lives under dbt/ — patterns below match both root-level and
+# dbt/-prefixed paths so this works regardless of where `dbt` commands
+# are invoked from.
+
+# Folder hasil kompilasi kueri (di-generate otomatis oleh dbt)
+target/
+dbt/target/
+
+# Folder log eksekusi kueri
+logs/
+dbt/logs/
+
+# Folder external packages (mirip node_modules di Node.js)
+dbt_modules/
+dbt_packages/
+dbt/dbt_modules/
+dbt/dbt_packages/
+package-lock.yml
+dbt/package-lock.yml
+
+# File kredensial lokal (Wajib di-ignore demi keamanan)
+profiles.yml
+dbt/profiles.yml
+~/.dbt/profiles.yml
+
+# dbt artifacts that should never be committed
+dbt/target/run_results.json
+dbt/target/manifest.json
+dbt/target/catalog.json
+dbt/target/sources.json
+dbt/target/semantic_manifest.json
+dbt/target/graph_summary.json
+*.duckdb
+*.duckdb.wal
+
+# dbt Cloud CLI local state
+.dbt/
+dbt/.user.yml
+
 # RabbitMQ
 mnesia/
 rabbitmq/
@@ -149,8 +191,12 @@ activemq-data/
 
 # Environments
 .env
+.env.*
+!.env.example
 .envrc
 .venv
+venv-pipeline/
+venv-airflow/
 env/
 venv/
 ENV/
@@ -216,3 +262,24 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ==============================================================================
+# Airflow
+# ==============================================================================
+airflow/airflow.db
+airflow/airflow.cfg
+airflow/airflow-webserver.pid
+airflow/logs/
+airflow/standalone_admin_password.txt
+airflow/webserver_config.py
+
+# ==============================================================================
+# Project-specific
+# ==============================================================================
+# Alembic local config overrides (alembic.ini itself stays tracked)
+migrations/versions/__pycache__/
+
+# Generated docs / reports not meant for version control
+/mnt/user-data/outputs/
+*.db
+*.sqlite

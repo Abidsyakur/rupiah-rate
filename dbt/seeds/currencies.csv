@@ -1,0 +1,8 @@
+currency_code,currency_name,region,is_active
+IDR,Indonesian Rupiah,Asia Pacific,true
+USD,US Dollar,North America,true
+EUR,Euro,Europe,true
+GBP,British Pound,Europe,true
+JPY,Japanese Yen,Asia Pacific,true
+SGD,Singapore Dollar,Asia Pacific,true
+AUD,Australian Dollar,Asia Pacific,true
