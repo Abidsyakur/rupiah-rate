@@ -193,7 +193,6 @@ daily_agg as (
 -- Step 4: join open, close, and aggregates together
 -- -------------------------------------------------------------------------
 daily_ohlc as (
-
     select
         d.from_currency_id,
         d.to_currency_id,
