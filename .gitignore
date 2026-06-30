@@ -152,14 +152,14 @@ logs/
 dbt/logs/
 
 # Folder external packages (mirip node_modules di Node.js)
-dbt_modules/
-dbt_packages/
+dbt/dbt_modules/
+dbt/dbt_packages/
 dbt/dbt_modules/
 dbt/dbt_packages/
 package-lock.yml
 dbt/package-lock.yml
 
-# File kredensial lokal (Wajib di-ignore demi keamanan)
+# File kredensial lokal (Wajib di-ignore demi keamandan)
 profiles.yml
 dbt/profiles.yml
 ~/.dbt/profiles.yml
