@@ -1,0 +1,234 @@
+version: 2
+
+# -----------------------------------------------------------------------
+# dbt/models/marts/schema.yml
+# -----------------------------------------------------------------------
+# Documentation and test definitions for the marts (business-ready) layer.
+# All mart models are materialized as tables (see dbt_project.yml).
+# This is the layer consumed by BI tools, dashboards, and ad-hoc analysis.
+# -----------------------------------------------------------------------
+
+models:
+
+  # =========================================================================
+  # DIMENSIONS
+  # =========================================================================
+
+  - name: dim_currencies
+    description: >
+      Business-ready currency dimension. One row per active currency,
+      with role (BASE/TRADING_PARTNER) and region classification for
+      dashboard filtering.
+    columns:
+      - name: currency_id
+        description: Primary key — surrogate ID from the source system.
+        tests: [unique, not_null]
+      - name: currency_code
+        description: ISO 4217 three-letter code (e.g. USD, IDR).
+        tests: [unique, not_null]
+      - name: currency_name
+        tests: [not_null]
+      - name: currency_role
+        description: "BASE (IDR, the platform's quote currency) or TRADING_PARTNER (all others)."
+        tests:
+          - accepted_values:
+              values: ['BASE', 'TRADING_PARTNER']
+      - name: region
+        description: Coarse geographic grouping for dashboard slicers.
+        tests: [not_null]
+      - name: is_active
+        tests: [not_null]
+
+
+  - name: dim_api_sources
+    description: >
+      Business-ready API source dimension, enriched with a rolling 7-day
+      health snapshot (call volume, success rate, latency, SLA breaches)
+      so dashboards can show source reliability without a separate join.
+    columns:
+      - name: source_id
+        tests: [unique, not_null]
+      - name: source_name
+        tests: [unique, not_null]
+      - name: source_category
+        description: "How the source is accessed: 'library' or 'rest_api'."
+        tests:
+          - accepted_values:
+              values: ['library', 'rest_api', 'unknown']
+      - name: health_status
+        description: >
+          Overall health classification:
+          HEALTHY (no SLA breach in last 7d, recent calls present),
+          DEGRADED (SLA breach in last 7d),
+          NO_DATA (no calls in last 7d),
+          INACTIVE (source disabled).
+        tests:
+          - accepted_values:
+              values: ['HEALTHY', 'DEGRADED', 'NO_DATA', 'INACTIVE']
+      - name: calls_last_7d
+        description: Total API calls made in the trailing 7 days.
+        tests: [not_null]
+      - name: avg_success_rate_7d
+        description: Average hourly success rate over the trailing 7 days.
+      - name: had_sla_breach_7d
+        description: TRUE if any hour in the trailing 7 days breached the SLA threshold.
+        tests: [not_null]
+      - name: days_since_last_call
+        description: Days elapsed since the most recent API call was recorded. NULL if never called.
+
+
+  - name: dim_quality_metrics
+    description: >
+      Reference dimension describing each quality check type (NULL_CHECK,
+      RANGE_CHECK, ANOMALY_CHECK) with static business descriptions and
+      all-time aggregate pass/fail statistics.
+    columns:
+      - name: check_name
+        description: Natural key — the check identifier (e.g. NULL_CHECK).
+        tests:
+          - unique
+          - not_null
+          - accepted_values:
+              values: ['NULL_CHECK', 'RANGE_CHECK', 'ANOMALY_CHECK']
+      - name: check_category
+        description: "Grouping: data_completeness / data_validity / statistical."
+        tests: [not_null]
+      - name: check_description
+        description: Human-readable explanation of what this check validates.
+        tests: [not_null]
+      - name: composite_score_weight
+        description: Weight this check contributes to int_quality_summary's composite_score (sums to 1.0 across all checks).
+        tests: [not_null]
+      - name: overall_pass_rate_pct
+        description: All-time pass rate for this check type across every evaluated rate.
+      - name: check_health_status
+        description: "HEALTHY (≥95% pass rate) / WATCH (80–95%) / CONCERNING (<80%) / NO_DATA."
+        tests:
+          - accepted_values:
+              values: ['HEALTHY', 'WATCH', 'CONCERNING', 'NO_DATA']
+
+
+  # =========================================================================
+  # FACTS
+  # =========================================================================
+
+  - name: fct_exchange_rates
+    description: >
+      Tick-level (intraday) exchange rate fact table. One row per raw
+      observation, fully denormalised with currency and source dimension
+      labels plus a consolidated quality_flag for dashboard filtering.
+      This is the most granular fact table — use fct_daily_snapshots for
+      trend dashboards and this table for drill-through / intraday detail.
+    columns:
+      - name: rate_id
+        description: Primary key — matches the source exchange_rates.rate_id.
+        tests: [unique, not_null]
+      - name: from_currency_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_currencies')
+              field: currency_id
+      - name: to_currency_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_currencies')
+              field: currency_id
+      - name: source_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_api_sources')
+              field: source_id
+      - name: currency_pair
+        description: Canonical pair string, e.g. "USD_IDR".
+        tests: [not_null]
+      - name: rate
+        description: The exchange rate value for this tick.
+        tests: [not_null]
+      - name: rate_timestamp
+        tests: [not_null]
+      - name: quality_flag
+        description: >
+          Consolidated traffic-light quality indicator for this tick:
+          RED (stale or daily SLA breached), YELLOW (degraded quality band),
+          GREEN (high quality, no concerns).
+        tests:
+          - accepted_values:
+              values: ['RED', 'YELLOW', 'GREEN']
+      - name: is_stale
+        tests: [not_null]
+      - name: daily_quality_sla_breached
+        description: Whether the broader day's quality SLA was breached (inherited from int_quality_summary).
+        tests: [not_null]
+
+
+  - name: fct_daily_snapshots
+    description: >
+      Daily-grain fact table — the primary table for dashboards and reports.
+      Combines OHLC, technical indicators (moving averages, Bollinger Bands,
+      RSI-style momentum, volatility), trend signals, and daily quality KPIs
+      into one fully denormalised row per currency pair per source per day.
+      Equivalent in spirit to the ETL-pipeline's daily_snapshots table
+      (ADR-002) but built via dbt transformation for BI traceability.
+    columns:
+      - name: snapshot_id
+        description: Surrogate key — matches int_daily_exchange_rates.daily_rate_id.
+        tests: [unique, not_null]
+      - name: rate_date
+        tests: [not_null]
+      - name: currency_pair
+        tests: [not_null]
+      - name: from_currency_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_currencies')
+              field: currency_id
+      - name: to_currency_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_currencies')
+              field: currency_id
+      - name: source_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_api_sources')
+              field: source_id
+      - name: rate_open
+        tests: [not_null]
+      - name: rate_high
+        tests: [not_null]
+      - name: rate_low
+        tests: [not_null]
+      - name: rate_close
+        tests: [not_null]
+      - name: trend_label
+        description: >
+          Business-friendly trend classification:
+          BULLISH_CROSS / BEARISH_CROSS / UPTREND / DOWNTREND / MIXED.
+        tests:
+          - accepted_values:
+              values: ['BULLISH_CROSS', 'BEARISH_CROSS', 'UPTREND', 'DOWNTREND', 'MIXED']
+      - name: quality_flag
+        description: >
+          Consolidated traffic-light quality indicator for the day:
+          RED (SLA breached or >10% anomalous), YELLOW (some anomalies or
+          pass rate 80-90%), GREEN (healthy).
+        tests:
+          - accepted_values:
+              values: ['RED', 'YELLOW', 'GREEN']
+      - name: volatility_flag
+        description: "HIGH (>1.5% 7d std dev) / MODERATE (0.5-1.5%) / LOW (<0.5%) / UNKNOWN (insufficient history)."
+        tests:
+          - accepted_values:
+              values: ['HIGH', 'MODERATE', 'LOW', 'UNKNOWN']
+      - name: golden_cross
+        tests: [not_null]
+      - name: death_cross
+        tests: [not_null]
+      - name: quality_sla_breached
+        tests: [not_null]

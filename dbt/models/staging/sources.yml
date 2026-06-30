@@ -1,0 +1,84 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Raw exchange rate data loaded by the ETL pipeline into PostgreSQL.
+      These tables are the single source of truth before any dbt
+      transformation is applied.
+    schema: public
+
+    # ---- Freshness checks (run with: dbt source freshness) ----
+    freshness:
+      warn_after: {count: 2,  period: hour}
+      error_after: {count: 24, period: hour}
+    loaded_at_field: created_at
+
+    tables:
+      - name: currencies
+        description: >
+          ISO 4217 currency reference data. Soft-deleted via is_active flag.
+          Written once at migration time; rarely updated.
+        freshness: null
+        columns:
+          - name: currency_id
+            tests: [unique, not_null]
+          - name: code
+            tests: [unique, not_null]
+          - name: name
+            tests: [not_null]
+          - name: is_active
+            tests: [not_null]
+
+      - name: api_sources
+        description: >
+          Registry of external API data providers (yfinance, FRED, etc.).
+          Soft-deleted via is_active flag.
+        freshness: null
+        columns:
+          - name: source_id
+            tests: [unique, not_null]
+          - name: source_name
+            tests: [unique, not_null]
+
+      - name: exchange_rates
+        description: >
+          Raw exchange rate observations loaded by ExchangeRateLoader.
+          One row per (from_currency, to_currency, timestamp, source) tuple.
+        columns:
+          - name: rate_id
+            tests: [unique, not_null]
+          - name: from_currency_id
+            tests: [not_null]
+          - name: to_currency_id
+            tests: [not_null]
+          - name: source_id
+            tests: [not_null]
+          - name: rate
+            tests: [not_null]
+          - name: timestamp
+            tests: [not_null]
+
+      - name: api_calls
+        description: >
+          Immutable audit trail of every ETL API call. Insert-only;
+          rows are never updated.
+        columns:
+          - name: call_id
+            tests: [unique, not_null]
+          - name: source_id
+            tests: [not_null]
+          - name: status
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['SUCCESS', 'TIMEOUT', 'RATE_LIMIT', 'ERROR']
+
+      - name: data_quality_metrics
+        description: >
+          Per-record quality check results for exchange_rates rows.
+        columns:
+          - name: metric_id
+            tests: [unique, not_null]
+          - name: rate_id
+            tests: [not_null]

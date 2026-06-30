@@ -1,0 +1,15 @@
+version: 2
+
+models:
+  - name: stg_exchange_rates
+    description: Clean exchange rates
+    columns:
+      - name: rate_id
+        description: Primary key
+        tests:
+          - unique
+          - not_null
+      - name: rate
+        description: Exchange rate value
+        tests:
+          - not_null
