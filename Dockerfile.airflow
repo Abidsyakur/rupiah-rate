@@ -1,0 +1,32 @@
+# =============================================================================
+# Dockerfile — Airflow image with rupiah-exchange-rate-intelligence deps
+# =============================================================================
+ARG AIRFLOW_VERSION=2.10.5
+# Kita ganti nama variabelnya menjadi CONSTRAINT_PYTHON_VERSION agar tidak tabrakan
+ARG CONSTRAINT_PYTHON_VERSION=3.12
+
+FROM apache/airflow:${AIRFLOW_VERSION}-python${CONSTRAINT_PYTHON_VERSION}
+
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+USER airflow
+
+# Daftarkan ulang ARG agar bisa dibaca di bawah baris FROM
+ARG AIRFLOW_VERSION=2.10.5
+ARG CONSTRAINT_PYTHON_VERSION=3.12
+
+COPY airflow/requirements.txt /tmp/requirements.txt
+
+# Sekarang link ini akan mengarah dengan benar ke constraints-3.12.txt
+RUN pip install --no-cache-dir \
+    --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${CONSTRAINT_PYTHON_VERSION}.txt" \
+    -r /tmp/requirements.txt
+
+# Project source is mounted as a volume at runtime (see docker-compose.yml),
+# not baked into the image, so code changes don't require a rebuild.
+ENV RUPIAH_PROJECT_ROOT=/opt/airflow/project
+ENV PYTHONPATH=/opt/airflow/project/src:/opt/airflow/dags
