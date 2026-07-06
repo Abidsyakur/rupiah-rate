@@ -32,7 +32,8 @@ models:
         description: "BASE (IDR, the platform's quote currency) or TRADING_PARTNER (all others)."
         tests:
           - accepted_values:
-              values: ['BASE', 'TRADING_PARTNER']
+              arguments:
+                values: ['BASE', 'TRADING_PARTNER']
       - name: region
         description: Coarse geographic grouping for dashboard slicers.
         tests: [not_null]
@@ -54,7 +55,8 @@ models:
         description: "How the source is accessed: 'library' or 'rest_api'."
         tests:
           - accepted_values:
-              values: ['library', 'rest_api', 'unknown']
+              arguments:
+                values: ['library', 'rest_api', 'unknown']
       - name: health_status
         description: >
           Overall health classification:
@@ -64,7 +66,8 @@ models:
           INACTIVE (source disabled).
         tests:
           - accepted_values:
-              values: ['HEALTHY', 'DEGRADED', 'NO_DATA', 'INACTIVE']
+              arguments:
+                values: ['HEALTHY', 'DEGRADED', 'NO_DATA', 'INACTIVE']
       - name: calls_last_7d
         description: Total API calls made in the trailing 7 days.
         tests: [not_null]
@@ -89,7 +92,8 @@ models:
           - unique
           - not_null
           - accepted_values:
-              values: ['NULL_CHECK', 'RANGE_CHECK', 'ANOMALY_CHECK']
+              arguments:
+                values: ['NULL_CHECK', 'RANGE_CHECK', 'ANOMALY_CHECK']
       - name: check_category
         description: "Grouping: data_completeness / data_validity / statistical."
         tests: [not_null]
@@ -105,7 +109,8 @@ models:
         description: "HEALTHY (≥95% pass rate) / WATCH (80–95%) / CONCERNING (<80%) / NO_DATA."
         tests:
           - accepted_values:
-              values: ['HEALTHY', 'WATCH', 'CONCERNING', 'NO_DATA']
+              arguments:
+                values: ['HEALTHY', 'WATCH', 'CONCERNING', 'NO_DATA']
 
 
   # =========================================================================
@@ -127,20 +132,23 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('dim_currencies')
-              field: currency_id
+              arguments:
+                to: ref('dim_currencies')
+                field: currency_id
       - name: to_currency_id
         tests:
           - not_null
           - relationships:
-              to: ref('dim_currencies')
-              field: currency_id
+              arguments:
+                to: ref('dim_currencies')
+                field: currency_id
       - name: source_id
         tests:
           - not_null
           - relationships:
-              to: ref('dim_api_sources')
-              field: source_id
+              arguments:
+                to: ref('dim_api_sources')
+                field: source_id
       - name: currency_pair
         description: Canonical pair string, e.g. "USD_IDR".
         tests: [not_null]
@@ -156,7 +164,8 @@ models:
           GREEN (high quality, no concerns).
         tests:
           - accepted_values:
-              values: ['RED', 'YELLOW', 'GREEN']
+              arguments:
+                values: ['RED', 'YELLOW', 'GREEN']
       - name: is_stale
         tests: [not_null]
       - name: daily_quality_sla_breached
@@ -184,20 +193,23 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('dim_currencies')
-              field: currency_id
+              arguments:
+                to: ref('dim_currencies')
+                field: currency_id
       - name: to_currency_id
         tests:
           - not_null
           - relationships:
-              to: ref('dim_currencies')
-              field: currency_id
+              arguments:
+                to: ref('dim_currencies')
+                field: currency_id
       - name: source_id
         tests:
           - not_null
           - relationships:
-              to: ref('dim_api_sources')
-              field: source_id
+              arguments:
+                to: ref('dim_api_sources')
+                field: source_id
       - name: rate_open
         tests: [not_null]
       - name: rate_high
@@ -212,7 +224,8 @@ models:
           BULLISH_CROSS / BEARISH_CROSS / UPTREND / DOWNTREND / MIXED.
         tests:
           - accepted_values:
-              values: ['BULLISH_CROSS', 'BEARISH_CROSS', 'UPTREND', 'DOWNTREND', 'MIXED']
+              arguments:
+                values: ['BULLISH_CROSS', 'BEARISH_CROSS', 'UPTREND', 'DOWNTREND', 'MIXED']
       - name: quality_flag
         description: >
           Consolidated traffic-light quality indicator for the day:
@@ -220,12 +233,14 @@ models:
           pass rate 80-90%), GREEN (healthy).
         tests:
           - accepted_values:
-              values: ['RED', 'YELLOW', 'GREEN']
+              arguments:
+                values: ['RED', 'YELLOW', 'GREEN']
       - name: volatility_flag
         description: "HIGH (>1.5% 7d std dev) / MODERATE (0.5-1.5%) / LOW (<0.5%) / UNKNOWN (insufficient history)."
         tests:
           - accepted_values:
-              values: ['HIGH', 'MODERATE', 'LOW', 'UNKNOWN']
+              arguments:
+                values: ['HIGH', 'MODERATE', 'LOW', 'UNKNOWN']
       - name: golden_cross
         tests: [not_null]
       - name: death_cross

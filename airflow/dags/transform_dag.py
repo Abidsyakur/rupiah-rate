@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 
 from airflow.decorators import dag, task
 from airflow.operators.bash import BashOperator
-from airflow.sensors.external_task import ExternalTaskSensor
+from airflow.sensors.python import PythonSensor
 from airflow.utils.dates import days_ago
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -33,7 +33,12 @@ from dags.constants import (
     SLA_TRANSFORM,
     TRANSFORM_SUMMARY_XCOM_KEY,
 )
-from dags.utils.helpers import on_failure_callback, utcnow_iso, xcom_push_summary
+from dags.utils.helpers import (
+    on_failure_callback,
+    utcnow_iso,
+    wait_for_recent_success,
+    xcom_push_summary,
+)
 from dags.utils.monitoring import build_sla_miss_callback, log_stage_end, log_stage_start
 
 logger = logging.getLogger(__name__)
@@ -79,18 +84,26 @@ _DEFAULT_ARGS = {
 def transform_dag():
 
     # ------------------------------------------------------------------ #
-    # Sensor: wait for extract_dag to finish today's run
+    # Sensor: wait for extract_dag to have a recent successful run.
+    #
+    # BUG FIX: previously used ExternalTaskSensor(execution_delta=1h),
+    # which assumes extract_dag ran exactly 1 hour before this DAG's own
+    # execution_date. That assumption breaks for manual runs and for
+    # DAGs chained via TriggerDagRunOperator (full_etl_dag), where each
+    # sub-DAG gets an independent execution_date. Now we simply check
+    # "did extract_dag succeed recently" — correct regardless of how
+    # either DAG was triggered. When chained from full_etl_dag (detected
+    # via dag_run.conf), the check is skipped entirely since
+    # TriggerDagRunOperator(wait_for_completion=True) already guarantees
+    # ordering.
     # ------------------------------------------------------------------ #
-    wait_for_extract = ExternalTaskSensor(
+    wait_for_extract = PythonSensor(
         task_id="wait_for_extract_dag",
-        external_dag_id=DAG_ID_EXTRACT,
-        external_task_id=None,          # wait for entire DAG, not a specific task
-        allowed_states=["success"],
-        execution_delta=timedelta(hours=1),   # extract_dag runs at 02:00, we run at 03:00
-        timeout=1800,
+        python_callable=wait_for_recent_success(DAG_ID_EXTRACT, within_hours=6.0),
         poke_interval=60,
+        timeout=1800,
         mode="reschedule",
-        doc_md="Wait for today's extract_dag run to complete before transforming.",
+        doc_md="Wait for a recent successful extract_dag run (skipped if chained from full_etl_dag).",
     )
 
     # ------------------------------------------------------------------ #

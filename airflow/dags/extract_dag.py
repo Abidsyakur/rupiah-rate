@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from airflow.decorators import dag, task
 from airflow.utils.dates import days_ago
@@ -334,25 +334,46 @@ def extract_dag():
             log_stage_end(stage, context)
             summary = {EXTRACT_SUMMARY_XCOM_KEY: merged, "validation_passed": True, "quality_scores": {}}
             xcom_push_summary(context, EXTRACT_SUMMARY_XCOM_KEY, summary)
+            _write_staging_payload(summary, context)
             return summary
 
-        # Group by pair and validate each series independently
-        by_pair: dict[str, list] = {}
+        # ------------------------------------------------------------------
+        # BUG FIX: group by (pair, source) — NOT pair alone.
+        #
+        # yfinance provides daily ticks; FRED provides monthly aggregates.
+        # The same pair (e.g. USD_IDR) can appear from BOTH sources with
+        # wildly different timestamps/frequencies. Grouping by pair alone
+        # merges these into one heterogeneous "time series", which false-
+        # positives the date_consistency check (see incident: USD_IDR
+        # failing with "1 unparseable/out-of-order date value" because a
+        # July 2026 daily tick and a May 2026 monthly average were
+        # compared as if they were the same series).
+        # ------------------------------------------------------------------
+        by_pair_source: dict[str, list] = {}
         for r in rates:
-            by_pair.setdefault(r.get("pair", "UNKNOWN"), []).append(r)
+            group_key = f"{r.get('pair', 'UNKNOWN')}|{r.get('source', 'unknown')}"
+            by_pair_source.setdefault(group_key, []).append(r)
 
         quality_scores: dict[str, float] = {}
         validation_errors: list[str] = []
 
-        for pair, pair_rates in by_pair.items():
-            df = pd.DataFrame(pair_rates).rename(columns={"rate": "rate_close"})
+        for group_key, group_rates in by_pair_source.items():
+            pair, source = group_key.split("|", 1)
+            df = pd.DataFrame(group_rates).rename(columns={"rate": "rate_close"})
             result = validator.validate(df)
-            quality_scores[pair] = round(result.quality_score, 4)
+            # Key quality_scores by pair only for downstream consumers,
+            # but if a pair has multiple sources, keep the worse score.
+            existing = quality_scores.get(pair)
+            quality_scores[pair] = (
+                round(result.quality_score, 4)
+                if existing is None
+                else round(min(existing, result.quality_score), 4)
+            )
             if not result.is_valid:
-                validation_errors.extend([f"[{pair}] {e}" for e in result.errors])
-                logger.warning("[validate] %s FAILED validation: %s", pair, result.errors)
+                validation_errors.extend([f"[{pair}/{source}] {e}" for e in result.errors])
+                logger.warning("[validate] %s (%s) FAILED validation: %s", pair, source, result.errors)
             else:
-                logger.info("[validate] %s OK (quality=%.3f)", pair, result.quality_score)
+                logger.info("[validate] %s (%s) OK (quality=%.3f)", pair, source, result.quality_score)
 
         avg_quality = round(sum(quality_scores.values()) / len(quality_scores), 4) if quality_scores else 0.0
 
@@ -376,11 +397,70 @@ def extract_dag():
             "validated_at":     utcnow_iso(),
         }
         xcom_push_summary(context, EXTRACT_SUMMARY_XCOM_KEY, summary)
+
+        # ------------------------------------------------------------------
+        # BUG FIX: persist to a shared-volume JSON file so load_dag can
+        # read it reliably. Cross-DAG XCom (ti.xcom_pull(dag_id=...)) is
+        # scoped to a matching execution_date/logical_date, which breaks
+        # for manual runs and for TriggerDagRunOperator-triggered sub-DAGs
+        # (each gets its own execution_date) — exactly the situation that
+        # caused "task succeeded but nothing landed in the database".
+        # ------------------------------------------------------------------
+        _write_staging_payload(summary, context)
+
         logger.info(
             "[validate] Done: avg_quality=%.3f pairs=%d errors=%d",
             avg_quality, len(quality_scores), len(validation_errors),
         )
         return summary
+
+    # ------------------------------------------------------------------ #
+    # Helper: persist validated payload to shared staging volume
+    # ------------------------------------------------------------------ #
+    def _write_staging_payload(summary: dict, context: dict) -> None:
+        """
+        Write the validated extraction summary to two files in STAGING_DIR
+        (a Docker volume mounted into every Airflow container):
+
+          - extract_latest.json      always overwritten — the canonical
+                                     "most recent successful extract" file
+                                     load_dag reads by default.
+          - extract_{ds}.json        dated snapshot, keyed by Airflow's
+                                     logical date (context['ds']), useful
+                                     for backfills / audit trail.
+
+        This sidesteps Airflow's cross-DAG XCom execution_date-matching
+        requirement entirely, which is what silently caused load_dag to
+        find no data despite extract_dag succeeding.
+        """
+        import json
+        import os
+        from dags.constants import STAGING_DIR
+
+        try:
+            os.makedirs(STAGING_DIR, exist_ok=True)
+            ds = context.get("ds", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+
+            payload = {**summary, "written_at": utcnow_iso(), "logical_date": ds}
+
+            latest_path = os.path.join(STAGING_DIR, "extract_latest.json")
+            dated_path  = os.path.join(STAGING_DIR, f"extract_{ds}.json")
+
+            for path in (latest_path, dated_path):
+                with open(path, "w") as f:
+                    json.dump(payload, f, indent=2, default=str)
+
+            logger.info(
+                "[validate] Staging payload written to %s and %s",
+                latest_path, dated_path,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Never let a staging-file write failure fail the whole DAG —
+            # XCom still has the data for same-run consumers; this is a
+            # best-effort convenience for cross-DAG consumption.
+            logger.error(
+                "[validate] Could not write staging payload (non-fatal): %s", exc
+            )
 
     # ------------------------------------------------------------------ #
     # Task wiring

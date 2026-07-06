@@ -13,7 +13,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
@@ -277,3 +277,97 @@ def format_duration(seconds: float) -> str:
 def utcnow_iso() -> str:
     """Return the current UTC time as an ISO 8601 string."""
     return datetime.now(timezone.utc).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Robust cross-DAG "did it run recently" check
+# ---------------------------------------------------------------------------
+
+def has_recent_successful_run(dag_id: str, within_hours: float = 6.0) -> bool:
+    """
+    Return True if ``dag_id`` had at least one successful DagRun within the
+    last ``within_hours`` hours.
+
+    This replaces ``ExternalTaskSensor(execution_delta=timedelta(hours=N))``,
+    which assumes the upstream DAG ran at a fixed, predictable offset before
+    the downstream DAG's own execution_date. That assumption breaks for:
+      - Manually-triggered runs (execution_date doesn't line up)
+      - DAGs triggered via TriggerDagRunOperator (e.g. from full_etl_dag),
+        where each sub-DAG gets its own independent execution_date
+
+    Using "was there a recent success" instead of "was there a success
+    exactly N hours before MY execution_date" makes the dependency check
+    correct regardless of how either DAG was triggered.
+
+    Parameters
+    ----------
+    dag_id:
+        The upstream DAG to check (e.g. "extract_dag").
+    within_hours:
+        How far back to look for a successful run. Default 6 hours —
+        generous enough to cover manual re-runs and retries, tight enough
+        to catch a genuinely stale/missing upstream run.
+
+    Example
+    -------
+    >>> has_recent_successful_run("extract_dag", within_hours=6)
+    True
+    """
+    from airflow.models import DagRun
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=within_hours)
+
+    runs = DagRun.find(dag_id=dag_id, state="success")
+    recent_runs = [
+        r for r in runs
+        if r.execution_date is not None
+        and (
+            r.execution_date.replace(tzinfo=timezone.utc)
+            if r.execution_date.tzinfo is None
+            else r.execution_date
+        ) >= cutoff
+    ]
+
+    logger.info(
+        "[has_recent_successful_run] dag_id=%s within_hours=%.1f -> found %d recent successful run(s)",
+        dag_id, within_hours, len(recent_runs),
+    )
+    return len(recent_runs) > 0
+
+
+def wait_for_recent_success(
+    dag_id: str,
+    within_hours: float = 6.0,
+    poke_interval: int = 60,
+    timeout: int = 1800,
+):
+    """
+    Build a PythonSensor-compatible callable that waits for a recent
+    successful run of ``dag_id``, checked via :func:`has_recent_successful_run`.
+
+    Usage in a DAG (with the @task.sensor decorator or PythonSensor):
+        from airflow.sensors.python import PythonSensor
+        wait_for_extract = PythonSensor(
+            task_id="wait_for_extract_dag",
+            python_callable=wait_for_recent_success("extract_dag"),
+            poke_interval=60,
+            timeout=1800,
+            mode="reschedule",
+        )
+    """
+    def _check(**context) -> bool:
+        # Chained runs from full_etl_dag already guarantee ordering via
+        # TriggerDagRunOperator(wait_for_completion=True) — skip the
+        # sensor entirely in that case to avoid redundant waiting.
+        dag_run = context.get("dag_run")
+        conf = getattr(dag_run, "conf", None) or {}
+        if conf.get("triggered_by") == "full_etl_dag":
+            logger.info(
+                "[wait_for_recent_success] Triggered by full_etl_dag — "
+                "upstream ordering already guaranteed, skipping wait for %s.",
+                dag_id,
+            )
+            return True
+        return has_recent_successful_run(dag_id, within_hours=within_hours)
+
+    return _check

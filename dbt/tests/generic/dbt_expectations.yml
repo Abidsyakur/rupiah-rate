@@ -1,9 +1,13 @@
 version: 2
 
 # =============================================================================
-# tests/generic/dbt_expectations.yml
+# tests/generic/dbt_expectations.yml (DOCUMENTATION ONLY)
 # =============================================================================
-# Centralised reference for dbt_expectations tests used across this project.
+# Centralised REFERENCE for dbt_expectations tests used across this project.
+#
+# IMPORTANT: This file documents WHICH dbt_expectations tests are applied
+# where, but does NOT define them. All actual test declarations live in
+# each model's own schema.yml for proper dbt docs rendering.
 #
 # Requires the dbt_expectations package — add to packages.yml:
 #
@@ -11,112 +15,99 @@ version: 2
 #     - package: calogica/dbt_expectations
 #       version: [">=0.10.0", "<0.11.0"]
 #
-# This file does NOT define new tests itself (dbt_expectations tests are
-# pre-built generic tests shipped by the package). Instead it documents
-# WHICH dbt_expectations tests are applied to WHICH columns project-wide,
-# so schema.yml files across staging/intermediate/marts can stay terse
-# while this file remains the single reference for "what quality bar does
-# each column have to clear, and why."
-#
 # Apply these tests directly in each model's schema.yml, e.g.:
 #
-#   - name: rate
-#     tests:
-#       - dbt_expectations.expect_column_values_to_be_between:
-#           min_value: 0.01
-#           max_value: 1000000
-#           strictly: true
+#   models:
+#     - name: stg_exchange_rates
+#       columns:
+#         - name: rate
+#           tests:
+#             - dbt_expectations.expect_column_values_to_be_between:
+#                 min_value: 0.01
+#                 max_value: 1000000
+#                 strictly: true
 # =============================================================================
 
-models:
+# =============================================================================
+# STAGING LAYER - dbt_expectations tests
+# =============================================================================
+# Apply these in: dbt/models/staging/schema.yml
 
-  - name: stg_exchange_rates
-    columns:
+# stg_exchange_rates:
+#   - rate:
+#     - dbt_expectations.expect_column_values_to_be_between:
+#         min_value: 0.01
+#         max_value: 1000000
+#         strictly: true
+#     - dbt_expectations.expect_column_values_to_not_be_null
+#
+#   - data_quality_score:
+#     - dbt_expectations.expect_column_values_to_be_between:
+#         min_value: 0.0
+#         max_value: 1.0
+#         row_condition: "data_quality_score is not null"
+#
+#   - rate_timestamp:
+#     - dbt_expectations.expect_column_values_to_be_between:
+#         min_value: "'2020-01-01'"
+#         max_value: "{{ '\"' ~ run_started_at.strftime('%Y-%m-%d') ~ '\"' }}"
+#         row_condition: "rate_timestamp is not null"
 
-      - name: rate
-        description: >
-          Exchange rate value. Bounds mirror VALIDATOR_RATE_MIN /
-          VALIDATOR_RATE_MAX defaults in src/etl/validators.py.
-        tests:
-          - dbt_expectations.expect_column_values_to_be_between:
-              min_value: 0.01
-              max_value: 1000000
-              strictly: true
-          - dbt_expectations.expect_column_values_to_not_be_null
+# stg_data_quality_metrics:
+#   - anomaly_score:
+#     - dbt_expectations.expect_column_values_to_be_between:
+#         min_value: 0.0
+#         max_value: 1.0
+#         row_condition: "anomaly_score is not null"
+#
+#   - check_name:
+#     - dbt_expectations.expect_column_values_to_be_in_set:
+#         value_set: ['NULL_CHECK', 'RANGE_CHECK', 'ANOMALY_CHECK']
 
-      - name: data_quality_score
-        description: Composite quality score must fall within [0.00, 1.00] when present.
-        tests:
-          - dbt_expectations.expect_column_values_to_be_between:
-              min_value: 0.0
-              max_value: 1.0
-              row_condition: "data_quality_score is not null"
+# =============================================================================
+# INTERMEDIATE LAYER - dbt_expectations tests
+# =============================================================================
+# Apply these in: dbt/models/intermediate/schema.yml
 
-      - name: rate_timestamp
-        description: Timestamps must be real (not in the far future / far past).
-        tests:
-          - dbt_expectations.expect_column_values_to_be_between:
-              min_value: "'2020-01-01'"
-              max_value: "{{ '\"' ~ run_started_at.strftime('%Y-%m-%d') ~ '\"' }}"
-              row_condition: "rate_timestamp is not null"
+# int_daily_exchange_rates:
+#   - rate_high:
+#     - dbt_expectations.expect_column_pair_values_a_to_be_greater_than_or_equal_to_b:
+#         column_A: rate_high
+#         column_B: rate_low
+#
+#   - tick_count:
+#     - dbt_expectations.expect_column_values_to_be_between:
+#         min_value: 1
+#         max_value: 100000
 
+# =============================================================================
+# MARTS LAYER - dbt_expectations tests
+# =============================================================================
+# Apply these in: dbt/models/marts/schema.yml
 
-  - name: stg_data_quality_metrics
-    columns:
+# fct_daily_snapshots:
+#   - rate_high:
+#     - dbt_expectations.expect_column_pair_values_a_to_be_greater_than_or_equal_to_b:
+#         column_A: rate_high
+#         column_B: rate_low
+#
+#   - daily_pass_rate_pct:
+#     - dbt_expectations.expect_column_values_to_be_between:
+#         min_value: 0
+#         max_value: 100
+#         row_condition: "daily_pass_rate_pct is not null"
+#
+#   - bb_position:
+#     - dbt_expectations.expect_column_values_to_be_between:
+#         min_value: -2.0
+#         max_value: 3.0
+#         row_condition: "bb_position is not null"
 
-      - name: anomaly_score
-        description: Anomaly score (when present) must fall within [0.00, 1.00].
-        tests:
-          - dbt_expectations.expect_column_values_to_be_between:
-              min_value: 0.0
-              max_value: 1.0
-              row_condition: "anomaly_score is not null"
-
-      - name: check_name
-        tests:
-          - dbt_expectations.expect_column_values_to_be_in_set:
-              value_set: ['NULL_CHECK', 'RANGE_CHECK', 'ANOMALY_CHECK']
-
-
-  - name: int_daily_exchange_rates
-    columns:
-
-      - name: rate_high
-        description: rate_high must always be >= rate_low (enforced again here for the daily aggregate).
-        tests:
-          - dbt_expectations.expect_column_pair_values_a_to_be_greater_than_or_equal_to_b:
-              column_A: rate_high
-              column_B: rate_low
-
-      - name: tick_count
-        tests:
-          - dbt_expectations.expect_column_values_to_be_between:
-              min_value: 1
-              max_value: 100000
-
-
-  - name: fct_daily_snapshots
-    columns:
-
-      - name: rate_high
-        tests:
-          - dbt_expectations.expect_column_pair_values_a_to_be_greater_than_or_equal_to_b:
-              column_A: rate_high
-              column_B: rate_low
-
-      - name: daily_pass_rate_pct
-        tests:
-          - dbt_expectations.expect_column_values_to_be_between:
-              min_value: 0
-              max_value: 100
-              row_condition: "daily_pass_rate_pct is not null"
-
-      - name: bb_position
-        description: >
-          Bollinger Band position is typically within [0,1] but breakouts
-          can push it outside — we only assert it's not wildly out of range.
-        tests:
-          - dbt_expectations.expect_column_values_to_be_between:
-              min_value: -2.0
-              max_value: 3.0
-              row_condition: "bb_position is not null"
+# =============================================================================
+# END OF DOCUMENTATION
+# =============================================================================
+# All actual test definitions belong in:
+#   - dbt/models/staging/schema.yml
+#   - dbt/models/intermediate/schema.yml
+#   - dbt/models/marts/schema.yml
+# =============================================================================

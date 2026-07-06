@@ -83,10 +83,17 @@ def full_etl_dag():
 
     # ------------------------------------------------------------------ #
     # Step 1 — Trigger extract_dag and wait for completion
+    #
+    # conf={"triggered_by": "full_etl_dag"} lets transform_dag/load_dag's
+    # sensors (see utils/helpers.wait_for_recent_success) skip their own
+    # "recent success" check entirely, since wait_for_completion=True here
+    # already guarantees strict ordering — avoids redundant/confusing
+    # double-waiting.
     # ------------------------------------------------------------------ #
     trigger_extract = TriggerDagRunOperator(
         task_id="trigger_extract_dag",
         trigger_dag_id=DAG_ID_EXTRACT,
+        conf={"triggered_by": "full_etl_dag"},
         wait_for_completion=True,
         poke_interval=30,
         execution_timeout=timedelta(minutes=35),
@@ -101,6 +108,7 @@ def full_etl_dag():
     trigger_transform = TriggerDagRunOperator(
         task_id="trigger_transform_dag",
         trigger_dag_id=DAG_ID_TRANSFORM,
+        conf={"triggered_by": "full_etl_dag"},
         wait_for_completion=True,
         poke_interval=30,
         execution_timeout=timedelta(minutes=50),
@@ -115,6 +123,7 @@ def full_etl_dag():
     trigger_load = TriggerDagRunOperator(
         task_id="trigger_load_dag",
         trigger_dag_id=DAG_ID_LOAD,
+        conf={"triggered_by": "full_etl_dag"},
         wait_for_completion=True,
         poke_interval=30,
         execution_timeout=timedelta(minutes=25),
@@ -179,7 +188,7 @@ def full_etl_dag():
 
         # Send Slack summary (no-op if SLACK_WEBHOOK_URL is unset)
         send_pipeline_summary(
-            dag_id=DAG_ID_FULL_ETL,
+            dag_id=DAG_ID_FULL_ELT,
             run_id=context.get("run_id", "unknown"),
             summary=summary,
         )
@@ -194,7 +203,6 @@ def full_etl_dag():
     # ------------------------------------------------------------------ #
     # Wiring — strictly sequential
     # ------------------------------------------------------------------ #
-    trigger_extract >> trigger_transform >> trigger_load >> notify_summary()
-
+    trigger_extract >> trigger_load >> trigger_transform >> notify_summary()
 
 full_etl_dag()

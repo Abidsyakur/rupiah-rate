@@ -1,8 +1,7 @@
-version: '3.8'
-
 services:
+
   # ============================================================================
-  # 1. DATABASE CENTER (Mengikuti konfigurasi ROOT pertama kamu)
+  # 1. DATABASE CENTER
   # ============================================================================
   postgres:
     image: postgres:15
@@ -15,7 +14,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Menambahkan script ini agar Postgres otomatis membuat database 'airflow' saat start
+      # Creates the separate 'airflow' metadata database on first start
+      # (rupiah_db is created automatically by POSTGRES_DB above).
       - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -24,7 +24,7 @@ services:
       retries: 5
 
   # ============================================================================
-  # 2. dbt CLI (Tetap mengarah ke rupiah_db)
+  # 2. dbt CLI (interactive container — always mapped to rupiah_db)
   # ============================================================================
   dbt:
     image: ghcr.io/dbt-labs/dbt-postgres:1.5.0
@@ -46,7 +46,7 @@ services:
     command: tail -f /dev/null
 
   # ============================================================================
-  # 3. AIRFLOW ORCHESTRATOR (Kredensial disesuaikan ke user 'postgres')
+  # 3. AIRFLOW ORCHESTRATOR
   # ============================================================================
   airflow-init:
     build:
@@ -57,14 +57,22 @@ services:
         condition: service_healthy
     environment: &airflow-common-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      # Airflow connect ke database 'airflow' menggunakan user 'postgres'
+      # Airflow's own metadata DB — created by docker/init-db.sh
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
       AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-change_me}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       RUPIAH_PROJECT_ROOT: /opt/airflow/project
-      # URL Data Warehouse utama mengarah ke rupiah_db
+
+      # Shared-volume staging dir used by extract_dag.py to hand off
+      # validated extraction payloads to load_dag.py (bypasses the
+      # cross-DAG XCom execution_date mismatch bug — see
+      # extract_dag.py / load_dag.py comments for the full explanation).
+      RUPIAH_STAGING_DIR: /opt/airflow/project/data/staging
+
+      # Data warehouse — points at rupiah_db (this project's application DB)
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rupiah_db
+
       FRED_API_KEY: ${FRED_API_KEY:-}
       RUPIAH_ALERT_EMAILS: ${RUPIAH_ALERT_EMAILS:-}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
@@ -72,7 +80,7 @@ services:
       FRED_SOURCE_ID: "2"
       DBT_TARGET: prod
       DBT_THREADS: "4"
-      PYTHONPATH: /home/airflow/.local/lib/python3.12/site-packages:/opt/airflow:/opt/airflow/project
+      PYTHONPATH: /home/airflow/.local/lib/python3.12/site-packages:/opt/airflow:/opt/airflow/project:/opt/airflow/project/src
       _PIP_ADDITIONAL_REQUIREMENTS: "dbt-core dbt-postgres"
     volumes: &airflow-common-volumes
       - ./airflow/dags:/opt/airflow/dags

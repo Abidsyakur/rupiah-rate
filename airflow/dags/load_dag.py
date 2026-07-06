@@ -16,11 +16,10 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
-from airflow.utils.state import DagRunState
 from airflow.decorators import dag, task
-from airflow.sensors.external_task import ExternalTaskSensor
+from airflow.sensors.python import PythonSensor
 from airflow.utils.dates import days_ago
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
@@ -35,7 +34,12 @@ from dags.constants import (
     YFINANCE_SOURCE_ID,
     FRED_SOURCE_ID,
 )
-from dags.utils.helpers import on_failure_callback, utcnow_iso, xcom_push_summary
+from dags.utils.helpers import (
+    on_failure_callback,
+    utcnow_iso,
+    wait_for_recent_success,
+    xcom_push_summary,
+)
 from dags.utils.monitoring import (
     PipelineRunMetrics,
     build_sla_miss_callback,
@@ -75,17 +79,18 @@ _DEFAULT_ARGS = {
 def load_dag():
 
     # ------------------------------------------------------------------ #
-    # Sensor: wait for transform_dag
+    # Sensor: wait for transform_dag to have a recent successful run.
+    # See transform_dag.py for the full rationale — ExternalTaskSensor's
+    # execution_delta assumption breaks for manual runs and DAGs chained
+    # via TriggerDagRunOperator (full_etl_dag).
     # ------------------------------------------------------------------ #
-    wait_for_transform = ExternalTaskSensor(
+    wait_for_transform = PythonSensor(
         task_id="wait_for_transform_dag",
-        external_dag_id=DAG_ID_TRANSFORM,
-        external_task_id=None,
-        allowed_states=["success"],
-        execution_delta=timedelta(hours=1),
-        timeout=1800,
+        python_callable=wait_for_recent_success(DAG_ID_TRANSFORM, within_hours=6.0),
         poke_interval=60,
+        timeout=1800,
         mode="reschedule",
+        doc_md="Wait for a recent successful transform_dag run (skipped if chained from full_etl_dag).",
     )
 
     # ------------------------------------------------------------------ #
@@ -151,27 +156,88 @@ def load_dag():
         return summary
 
     # ------------------------------------------------------------------ #
+    # Helper: load the validated extraction payload from shared staging
+    # ------------------------------------------------------------------ #
+    def _read_staging_payload(context: dict) -> dict | None:
+        """
+        Read the validated extraction summary from STAGING_DIR (shared
+        Docker volume) instead of Airflow cross-DAG XCom.
+
+        BUG THIS FIXES: ``ti.xcom_pull(dag_id="extract_dag", ...)`` is
+        scoped to a matching execution_date/logical_date between the two
+        DAG runs. This works ONLY when both DAGs happen to share the same
+        logical date AND Airflow can resolve the matching run — which
+        breaks for manual runs, and for TriggerDagRunOperator-triggered
+        sub-DAG-runs (each gets its OWN execution_date). The result was
+        "task marked SUCCESS but nothing loaded" — the exact symptom
+        reported: extract_dag succeeded, but load_dag silently found no
+        XCom data to load.
+
+        Lookup order:
+          1. STAGING_DIR/extract_{ds}.json   (today's logical date)
+          2. STAGING_DIR/extract_latest.json (most recent successful extract)
+          3. Cross-DAG XCom (legacy fallback, best-effort only)
+        """
+        import json
+        import os
+        from dags.constants import STAGING_DIR
+
+        ds = context.get("ds", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+        dated_path  = os.path.join(STAGING_DIR, f"extract_{ds}.json")
+        latest_path = os.path.join(STAGING_DIR, "extract_latest.json")
+
+        for path, label in ((dated_path, "dated"), (latest_path, "latest")):
+            if os.path.isfile(path):
+                try:
+                    with open(path) as f:
+                        payload = json.load(f)
+                    logger.info(
+                        "[load_warehouse] Loaded extraction payload from %s file: %s",
+                        label, path,
+                    )
+                    return payload
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "[load_warehouse] Could not read %s (%s): %s", path, label, exc
+                    )
+
+        # Legacy fallback — best-effort, may find nothing (see docstring)
+        logger.warning(
+            "[load_warehouse] No staging file found at %s or %s — "
+            "falling back to cross-DAG XCom (unreliable; may return None).",
+            dated_path, latest_path,
+        )
+        ti = context.get("task_instance")
+        if ti is None:
+            return None
+        return ti.xcom_pull(
+            dag_id="extract_dag",
+            task_ids="validate_extract",
+            key=EXTRACT_SUMMARY_XCOM_KEY,
+            include_prior_dates=True,
+        )
+
+    # ------------------------------------------------------------------ #
     # Task 2 — Load rates into exchange_rates table via ExchangeRateLoader
     # ------------------------------------------------------------------ #
     @task(task_id="load_warehouse")
     def load_warehouse(**context) -> dict:
         """
-        Pull the validated extraction payload from XCom (pushed by
-        extract_dag's validate_extract task) and load it into the
-        exchange_rates table using ExchangeRateLoader's idempotent upsert.
+        Read the validated extraction payload from the shared staging
+        volume (written by extract_dag's validate_extract task) and load
+        it into the exchange_rates table using ExchangeRateLoader's
+        idempotent upsert.
         """
         stage = log_stage_start("load_warehouse")
 
-        # Pull extraction summary from extract_dag via XCom
-        ti = context.get("task_instance")
-        extract_summary = ti.xcom_pull(
-            dag_id="extract_dag",
-            task_ids="validate_extract",
-            key=EXTRACT_SUMMARY_XCOM_KEY,
-        ) if ti else None
+        extract_summary = _read_staging_payload(context)
 
         if not extract_summary or not extract_summary.get("merged_data", {}).get("rates"):
-            logger.warning("[load_warehouse] No extraction payload in XCom — nothing to load.")
+            logger.warning(
+                "[load_warehouse] No extraction payload found (staging file "
+                "empty/missing and XCom fallback found nothing) — nothing to load. "
+                "Did extract_dag run successfully for this logical date?"
+            )
             stage.finish(success=True)
             log_stage_end(stage, context)
             return {"rows_loaded": 0, "rows_updated": 0, "skipped": 0}

@@ -1,156 +1,33 @@
 version: 2
 
 # =============================================================================
-# tests/generic/unique_checks.yml
+# tests/generic/unique_checks.yml (DOCUMENTATION ONLY)
 # =============================================================================
-# Centralised reference for uniqueness test coverage across the project.
+# Reference guide for which columns need unique/uniqueness tests
+# Actual tests are defined in each model's schema.yml
 #
-# Covers both:
-#   1. Single-column `unique` tests (dbt built-in)
-#   2. Multi-column uniqueness via dbt_utils.unique_combination_of_columns
-#      (requires the dbt_utils package — add to packages.yml:
-#          packages:
-#            - package: dbt-labs/dbt_utils
-#              version: [">=1.1.0", "<2.0.0")
+# Single-column unique:
+# - stg_currencies: currency_id, currency_code
+# - stg_api_sources: source_id, source_name
+# - stg_exchange_rates: rate_id
+# - stg_api_calls: call_id
+# - stg_data_quality_metrics: metric_id
+# - int_daily_exchange_rates: daily_rate_id
+# - int_exchange_rate_statistics: daily_rate_id
+# - int_api_performance: perf_id
+# - int_quality_summary: quality_summary_id
+# - dim_currencies: currency_id, currency_code
+# - dim_api_sources: source_id, source_name
+# - dim_quality_metrics: check_name
+# - fct_exchange_rates: rate_id
+# - fct_daily_snapshots: snapshot_id
 #
-# As with null_checks.yml, the authoritative test definitions live in each
-# layer's own schema.yml; this file is the audit trail for "what must be
-# unique and why."
-# =============================================================================
-
-models:
-
-  # ---------------------------------------------------------------------
-  # Staging layer
-  # ---------------------------------------------------------------------
-
-  - name: stg_currencies
-    columns:
-      - name: currency_id
-        tests: [unique]
-      - name: currency_code
-        description: ISO 4217 code must be unique — duplicate codes would corrupt every currency join downstream.
-        tests: [unique]
-
-  - name: stg_api_sources
-    columns:
-      - name: source_id
-        tests: [unique]
-      - name: source_name
-        tests: [unique]
-
-  - name: stg_exchange_rates
-    columns:
-      - name: rate_id
-        tests: [unique]
-    tests:
-      # Mirrors the DB-level uq_exchange_rates_pair_timestamp_source
-      # constraint (see docs/SCHEMA.md ADR-002) — re-asserted here so a
-      # loader bug that bypasses the DB constraint is still caught by dbt.
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - from_currency_id
-            - to_currency_id
-            - source_id
-            - rate_timestamp
-
-  - name: stg_api_calls
-    columns:
-      - name: call_id
-        tests: [unique]
-
-  - name: stg_data_quality_metrics
-    columns:
-      - name: metric_id
-        tests: [unique]
-    tests:
-      # One row per (rate_id, check_name) — a rate should never have two
-      # rows for the same check (e.g. two NULL_CHECK results).
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - rate_id
-            - check_name
-
-  # ---------------------------------------------------------------------
-  # Intermediate layer — surrogate keys must be unique by construction
-  # ---------------------------------------------------------------------
-
-  - name: int_daily_exchange_rates
-    columns:
-      - name: daily_rate_id
-        tests: [unique]
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - from_currency_id
-            - to_currency_id
-            - source_id
-            - rate_date
-
-  - name: int_exchange_rate_statistics
-    columns:
-      - name: daily_rate_id
-        tests: [unique]
-
-  - name: int_api_performance
-    columns:
-      - name: perf_id
-        tests: [unique]
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - source_id
-            - call_date
-            - call_hour
-
-  - name: int_quality_summary
-    columns:
-      - name: quality_summary_id
-        tests: [unique]
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - currency_pair
-            - source_id
-            - rate_date
-
-  # ---------------------------------------------------------------------
-  # Marts layer
-  # ---------------------------------------------------------------------
-
-  - name: dim_currencies
-    columns:
-      - name: currency_id
-        tests: [unique]
-      - name: currency_code
-        tests: [unique]
-
-  - name: dim_api_sources
-    columns:
-      - name: source_id
-        tests: [unique]
-      - name: source_name
-        tests: [unique]
-
-  - name: dim_quality_metrics
-    columns:
-      - name: check_name
-        tests: [unique]
-
-  - name: fct_exchange_rates
-    columns:
-      - name: rate_id
-        tests: [unique]
-
-  - name: fct_daily_snapshots
-    columns:
-      - name: snapshot_id
-        tests: [unique]
-    tests:
-      # Business-grain uniqueness: one row per pair per source per day.
-      # This is the test referenced by tests/singular/test_no_duplicate_rates.sql.
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - currency_pair
-            - source_id
-            - rate_date
+# Multi-column unique (via dbt_utils.unique_combination_of_columns):
+# - stg_exchange_rates: (from_currency_id, to_currency_id, source_id, rate_timestamp)
+# - stg_data_quality_metrics: (rate_id, check_name)
+# - int_daily_exchange_rates: (from_currency_id, to_currency_id, source_id, rate_date)
+# - int_api_performance: (source_id, call_date, call_hour)
+# - int_quality_summary: (currency_pair, source_id, rate_date)
+# - fct_daily_snapshots: (currency_pair, source_id, rate_date)
+#
+# Apply these tests in each model's schema.yml under columns section

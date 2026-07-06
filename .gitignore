@@ -152,14 +152,14 @@ logs/
 dbt/logs/
 
 # Folder external packages (mirip node_modules di Node.js)
-dbt/dbt_modules/
-dbt/dbt_packages/
+dbt_modules/
+dbt_packages/
 dbt/dbt_modules/
 dbt/dbt_packages/
 package-lock.yml
 dbt/package-lock.yml
 
-# File kredensial lokal (Wajib di-ignore demi keamandan)
+# File kredensial lokal (Wajib di-ignore demi keamanan)
 profiles.yml
 dbt/profiles.yml
 ~/.dbt/profiles.yml
@@ -278,6 +278,11 @@ airflow/webserver_config.py
 # ==============================================================================
 # Alembic local config overrides (alembic.ini itself stays tracked)
 migrations/versions/__pycache__/
+
+# Runtime staging/metrics files written by extract_dag.py / monitoring.py
+# (shared Docker volume — contains transient JSON payloads, not source code)
+data/staging/
+data/metrics/
 
 # Generated docs / reports not meant for version control
 /mnt/user-data/outputs/

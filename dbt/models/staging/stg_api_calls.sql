@@ -67,7 +67,7 @@ cleaned as (
         timestamp::timestamptz                              as call_timestamp,
 
         -- Status normalised to uppercase to guard against any case variance
-        upper(trim(status))                                 as status,
+        upper(trim(status::text))                                 as status,
 
         -- Error message cleaned of leading/trailing whitespace; NULL if none
         nullif(trim(error_message), '')                     as error_message,
@@ -118,7 +118,7 @@ cleaned as (
         itself responded normally.
         */
         case
-            when upper(trim(status)) = 'SUCCESS' then true
+            when upper(trim(status::text)) = 'SUCCESS' then true
             else false
         end                                                 as is_success,
 
@@ -127,7 +127,7 @@ cleaned as (
         to detect over-aggressive scheduling).
         */
         case
-            when upper(trim(status)) = 'RATE_LIMIT' then true
+            when upper(trim(status::text)) = 'RATE_LIMIT' then true
             else false
         end                                                 as is_rate_limited,
 
@@ -135,7 +135,7 @@ cleaned as (
         True if the call timed out — correlate with source latency trends.
         */
         case
-            when upper(trim(status)) = 'TIMEOUT' then true
+            when upper(trim(status::text)) = 'TIMEOUT' then true
             else false
         end                                                 as is_timeout,
 
