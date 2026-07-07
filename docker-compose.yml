@@ -1,6 +1,8 @@
-version: '3.8'
-
 services:
+
+  # ============================================================================
+  # 1. DATABASE CENTER
+  # ============================================================================
   postgres:
     image: postgres:15
     container_name: rupiah-postgres
@@ -12,12 +14,18 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Creates the separate 'airflow' metadata database on first start
+      # (rupiah_db is created automatically by POSTGRES_DB above).
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # ============================================================================
+  # 2. dbt CLI (interactive container — always mapped to rupiah_db)
+  # ============================================================================
   dbt:
     image: ghcr.io/dbt-labs/dbt-postgres:1.5.0
     container_name: rupiah-dbt
@@ -36,6 +44,88 @@ services:
       - ./logs:/dbt/logs
     working_dir: /dbt
     command: tail -f /dev/null
+
+  # ============================================================================
+  # 3. AIRFLOW ORCHESTRATOR
+  # ============================================================================
+  airflow-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: &airflow-common-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      # Airflow's own metadata DB — created by docker/init-db.sh
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-change_me}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      RUPIAH_PROJECT_ROOT: /opt/airflow/project
+
+      # Shared-volume staging dir used by extract_dag.py to hand off
+      # validated extraction payloads to load_dag.py (bypasses the
+      # cross-DAG XCom execution_date mismatch bug — see
+      # extract_dag.py / load_dag.py comments for the full explanation).
+      RUPIAH_STAGING_DIR: /opt/airflow/project/data/staging
+
+      # Data warehouse — points at rupiah_db (this project's application DB)
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rupiah_db
+
+      FRED_API_KEY: ${FRED_API_KEY:-}
+      RUPIAH_ALERT_EMAILS: ${RUPIAH_ALERT_EMAILS:-}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      YFINANCE_SOURCE_ID: "1"
+      FRED_SOURCE_ID: "2"
+      DBT_TARGET: prod
+      DBT_THREADS: "4"
+      PYTHONPATH: /home/airflow/.local/lib/python3.12/site-packages:/opt/airflow:/opt/airflow/project:/opt/airflow/project/src
+      _PIP_ADDITIONAL_REQUIREMENTS: "dbt-core dbt-postgres"
+    volumes: &airflow-common-volumes
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./airflow/logs:/opt/airflow/logs
+      - ./:/opt/airflow/project
+    entrypoint: /bin/bash
+    command: -c "airflow db migrate && airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin || true"
+
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    container_name: rupiah-airflow-webserver
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment: *airflow-common-env
+    volumes: *airflow-common-volumes
+    ports:
+      - "8080:8080"
+    command: webserver
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    container_name: rupiah-airflow-scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment: *airflow-common-env
+    volumes: *airflow-common-volumes
+    command: scheduler
+    restart: unless-stopped
 
 volumes:
   postgres_data:

@@ -1,15 +1,166 @@
 version: 2
 
 models:
+  - name: stg_currencies
+    description: Clean currency dimension
+    columns:
+      - name: currency_id
+        description: Primary key
+        tests:
+          - unique
+          - not_null
+      - name: currency_code
+        description: ISO 4217 code
+        tests:
+          - unique
+          - not_null
+      - name: currency_name
+        tests:
+          - not_null
+
+  - name: stg_api_sources
+    description: Clean API source reference
+    columns:
+      - name: source_id
+        description: Primary key
+        tests:
+          - unique
+          - not_null
+      - name: source_name
+        tests:
+          - unique
+          - not_null
+
   - name: stg_exchange_rates
-    description: Clean exchange rates
+    description: Clean exchange rates with quality flags
     columns:
       - name: rate_id
         description: Primary key
         tests:
           - unique
           - not_null
-      - name: rate
-        description: Exchange rate value
+
+      - name: from_currency_id
+        description: Source currency
         tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_currencies')
+                field: currency_id
+
+      - name: to_currency_id
+        description: Target currency
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_currencies')
+                field: currency_id
+
+      - name: source_id
+        description: API source
+        tests:
+          - not_null
+
+      - name: rate
+        description: Exchange rate value (0.01 to 1,000,000)
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0.01
+                max_value: 1000000
+                strictly: true
+
+      - name: data_quality_score
+        description: Quality score 0-1
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0.0
+                max_value: 1.0
+                row_condition: "data_quality_score is not null"
+
+      - name: rate_timestamp
+        description: Timestamp of exchange rate
+        tests:
+          - not_null
+
+      - name: is_valid
+        description: Data validity flag
+        tests:
+          - not_null
+
+    tests:
+      # Multi-column uniqueness: one row per (currency_pair, source, timestamp)
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - from_currency_id
+              - to_currency_id
+              - source_id
+              - rate_timestamp
+
+  - name: stg_api_calls
+    description: Clean API call audit trail
+    columns:
+      - name: call_id
+        description: Primary key
+        tests:
+          - unique
+          - not_null
+
+      - name: source_id
+        description: API source
+        tests:
+          - not_null
+
+      - name: status
+        description: Call status (success, failed, etc)
+        tests:
+          - not_null
+
+  - name: stg_data_quality_metrics
+    description: Data quality check results
+    columns:
+      - name: metric_id
+        description: Primary key
+        tests:
+          - unique
+          - not_null
+
+      - name: rate_id
+        description: Foreign key to exchange_rates
+        tests:
+          - not_null
+
+      - name: check_name
+        description: Type of check (NULL_CHECK, RANGE_CHECK, ANOMALY_CHECK)
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_in_set:
+              arguments:
+                value_set: ['NULL_CHECK', 'RANGE_CHECK', 'ANOMALY_CHECK']
+
+      - name: check_passed
+        description: Whether check passed
+        tests:
+          - not_null
+
+      - name: anomaly_score
+        description: Anomaly score if applicable
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0.0
+                max_value: 1.0
+                row_condition: "anomaly_score is not null"
+
+    tests:
+      # One row per (rate_id, check_name)
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - rate_id
+              - check_name

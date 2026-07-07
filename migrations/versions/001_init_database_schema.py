@@ -67,7 +67,7 @@ depends_on: str | None = None
 
 
 # ---------------------------------------------------------------------------
-# Dialect helper
+# Dialect helper & Custom Types
 # ---------------------------------------------------------------------------
 
 def _is_postgresql() -> bool:
@@ -84,6 +84,18 @@ def _is_sqlite() -> bool:
 def _now_sql() -> str:
     """Return the current-timestamp SQL expression for the active dialect."""
     return "now()" if _is_postgresql() else "CURRENT_TIMESTAMP"
+
+
+class SQLExistingEnum(sa.types.UserDefinedType):
+    """
+    Helper untuk menggunakan tipe ENUM PostgreSQL yang sudah dibuat secara manual
+    tanpa memicu bug siklus hidup (lifecycle auto-create) bawaan SQLAlchemy/Alembic.
+    """
+    def __init__(self, name: str):
+        self.name = name
+
+    def get_col_spec(self, **kw) -> str:
+        return self.name
 
 
 # ---------------------------------------------------------------------------
@@ -543,17 +555,13 @@ def _create_api_calls_table() -> None:
     Create the ``api_calls`` audit table.
 
     Insert-only — rows are never updated, so no ``updated_at`` column.
-    Status column uses the PostgreSQL ENUM type created in step 1;
-    SQLite stores it as VARCHAR(50).
+    Status column menggunakan helper custom SQLExistingEnum untuk PostgreSQL,
+    sedangkan SQLite menyimpannya sebagai VARCHAR(50).
     """
-    # Choose the status column type based on the dialect
     status_type: sa.types.TypeEngine
     if _is_postgresql():
-        status_type = sa.Enum(
-            "SUCCESS", "TIMEOUT", "RATE_LIMIT", "ERROR",
-            name="api_call_status",
-            create_type=False,   # already created in step 1
-        )
+        # Menggunakan helper untuk memotong siklus deteksi otomatis pembuatan tipe data
+        status_type = SQLExistingEnum("api_call_status")
     else:
         status_type = sa.String(50)
 
@@ -738,15 +746,13 @@ def _create_daily_snapshots_table() -> None:
 
     Pre-computed OHLCV data populated by dbt marts or a scheduled job.
     CHECK constraints enforce OHLC integrity (high >= low, all rates > 0).
-    Anomaly level uses the PostgreSQL ENUM; VARCHAR otherwise.
+    Anomaly level menggunakan helper custom SQLExistingEnum pada PostgreSQL;
+    VARCHAR otherwise.
     """
     anomaly_level_type: sa.types.TypeEngine
     if _is_postgresql():
-        anomaly_level_type = sa.Enum(
-            "NORMAL", "WARNING", "CRITICAL",
-            name="anomaly_level",
-            create_type=False,
-        )
+        # Menggunakan helper untuk memotong siklus deteksi otomatis pembuatan tipe data
+        anomaly_level_type = SQLExistingEnum("anomaly_level")
     else:
         anomaly_level_type = sa.String(50)
 

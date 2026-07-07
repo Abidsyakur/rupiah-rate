@@ -1,0 +1,18 @@
+# =============================================================================
+# airflow/requirements.txt (Optimized & Clean)
+# =============================================================================
+
+# ---- Core Database (Sudah include di Airflow, tidak perlu ditulis) ---------
+
+# ---- Library API Tambahan (Gunakan >= agar fleksibel) ----------------------
+yfinance>=0.2.32
+fredapi>=0.5.1
+python-dotenv>=1.0.0
+python-json-logger>=2.0.0
+
+# ---- Data Processing & Utilities -------------------------------------------
+# (Dilepas versi == nya agar otomatis mengikuti constraint bawaan Airflow)
+requests
+pandas
+numpy
+scipy

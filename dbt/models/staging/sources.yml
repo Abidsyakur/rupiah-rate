@@ -72,7 +72,8 @@ sources:
             tests:
               - not_null
               - accepted_values:
-                  values: ['SUCCESS', 'TIMEOUT', 'RATE_LIMIT', 'ERROR']
+                  arguments:
+                    values: ['SUCCESS', 'TIMEOUT', 'RATE_LIMIT', 'ERROR']
 
       - name: data_quality_metrics
         description: >

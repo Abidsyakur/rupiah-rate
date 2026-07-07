@@ -8,7 +8,6 @@ version: 2
 # -----------------------------------------------------------------------
 
 seeds:
-
   - name: currencies
     description: >
       Reference currency data, used to seed/cross-check the currencies
@@ -36,7 +35,8 @@ seeds:
           - unique
           - not_null
           - accepted_values:
-              values: ['IDR', 'USD', 'EUR', 'GBP', 'JPY', 'SGD', 'AUD']
+              arguments:
+                values: ['IDR', 'USD', 'EUR', 'GBP', 'JPY', 'SGD', 'AUD']
       - name: currency_name
         tests: [not_null]
       - name: region
