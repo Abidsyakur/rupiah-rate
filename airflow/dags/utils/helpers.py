@@ -292,7 +292,7 @@ def has_recent_successful_run(dag_id: str, within_hours: float = 6.0) -> bool:
     which assumes the upstream DAG ran at a fixed, predictable offset before
     the downstream DAG's own execution_date. That assumption breaks for:
       - Manually-triggered runs (execution_date doesn't line up)
-      - DAGs triggered via TriggerDagRunOperator (e.g. from full_etl_dag),
+      - DAGs triggered via TriggerDagRunOperator (e.g. from full_elt_dag),
         where each sub-DAG gets its own independent execution_date
 
     Using "was there a recent success" instead of "was there a success
@@ -356,16 +356,18 @@ def wait_for_recent_success(
         )
     """
     def _check(**context) -> bool:
-        # Chained runs from full_etl_dag already guarantee ordering via
-        # TriggerDagRunOperator(wait_for_completion=True) — skip the
-        # sensor entirely in that case to avoid redundant waiting.
+        # Chained runs from an orchestrator DAG (e.g. full_elt_dag) already
+        # guarantee ordering via TriggerDagRunOperator(wait_for_completion=True)
+        # — skip the sensor entirely in that case to avoid redundant waiting.
+        # Any truthy "triggered_by" value in dag_run.conf is treated as this
+        # signal, rather than hardcoding one specific orchestrator DAG name.
         dag_run = context.get("dag_run")
         conf = getattr(dag_run, "conf", None) or {}
-        if conf.get("triggered_by") == "full_etl_dag":
+        if conf.get("triggered_by"):
             logger.info(
-                "[wait_for_recent_success] Triggered by full_etl_dag — "
+                "[wait_for_recent_success] Chained run (triggered_by=%r) — "
                 "upstream ordering already guaranteed, skipping wait for %s.",
-                dag_id,
+                conf.get("triggered_by"), dag_id,
             )
             return True
         return has_recent_successful_run(dag_id, within_hours=within_hours)

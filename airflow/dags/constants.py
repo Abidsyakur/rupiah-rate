@@ -39,7 +39,7 @@ STAGING_DIR: str = os.getenv(
 DAG_ID_EXTRACT   = "extract_dag"
 DAG_ID_TRANSFORM = "transform_dag"
 DAG_ID_LOAD      = "load_dag"
-DAG_ID_FULL_ETL  = "full_etl_dag"
+DAG_ID_FULL_ELT  = "full_elt_dag"
 
 # ---------------------------------------------------------------------------
 # Currency pairs & source IDs
@@ -61,7 +61,7 @@ DEFAULT_MAX_RETRY_DELAY: timedelta = timedelta(minutes=30)
 SLA_EXTRACT:   timedelta = timedelta(minutes=30)
 SLA_TRANSFORM: timedelta = timedelta(minutes=45)
 SLA_LOAD:      timedelta = timedelta(minutes=20)
-SLA_FULL_ETL:  timedelta = timedelta(hours=2)
+SLA_FULL_ELT:  timedelta = timedelta(hours=2)
 
 # ---------------------------------------------------------------------------
 # Notifications

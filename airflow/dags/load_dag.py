@@ -1,14 +1,24 @@
 """
 airflow/dags/load_dag.py
 ==========================
-DAG 3 — Load transformed mart data to warehouse and refresh cache.
+DAG 2 (in ELT order) — Load validated raw exchange rate data into the
+warehouse (the "L" in ELT — dbt/transform_dag does the "T" afterward).
 
-Schedule : Daily at 04:00 UTC  (0 4 * * *)
-Tasks    : wait_transform → export_marts → load_warehouse → refresh_cache
-Depends  : transform_dag must complete successfully first
+Schedule : Daily at 03:00 UTC  (0 3 * * *)
+Tasks    : wait_for_extract → load_warehouse → record_load_summary
+Depends  : extract_dag must complete successfully first
 Retries  : 3 with exponential backoff
 Alerts   : Email + Slack on failure
 SLA      : 20 minutes
+
+ELT, not ETL
+------------
+This DAG only loads RAW extracted rates into the exchange_rates table.
+It does NOT export or refresh anything derived from dbt's mart tables
+(fct_daily_snapshots, etc.) — those tasks moved to transform_dag.py,
+since marts.* tables are built by dbt and don't exist yet (or only hold
+yesterday's data) at the point this DAG runs. See
+airflow/dags/full_elt_dag.py for the end-to-end orchestration order.
 """
 
 from __future__ import annotations
@@ -26,8 +36,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from dags.config import PipelineDAGConfig
 from dags.constants import (
+    DAG_ID_EXTRACT,
     DAG_ID_LOAD,
-    DAG_ID_TRANSFORM,
     EXTRACT_SUMMARY_XCOM_KEY,
     LOAD_SUMMARY_XCOM_KEY,
     SLA_LOAD,
@@ -69,7 +79,7 @@ _DEFAULT_ARGS = {
     description="Load validated exchange rate data into the database and refresh downstream caches.",
     default_args=_DEFAULT_ARGS,
     start_date=days_ago(1),
-    schedule_interval="0 4 * * *",
+    schedule_interval="0 3 * * *",
     catchup=False,
     max_active_runs=1,
     tags=["rupiah", "load"],
@@ -79,81 +89,34 @@ _DEFAULT_ARGS = {
 def load_dag():
 
     # ------------------------------------------------------------------ #
-    # Sensor: wait for transform_dag to have a recent successful run.
-    # See transform_dag.py for the full rationale — ExternalTaskSensor's
-    # execution_delta assumption breaks for manual runs and DAGs chained
-    # via TriggerDagRunOperator (full_etl_dag).
+    # Sensor: wait for extract_dag to have a recent successful run.
+    #
+    # ELT ORDER FIX: load_dag now depends on extract_dag (not
+    # transform_dag). dbt (transform_dag) needs the RAW tables already
+    # populated to transform them — so the correct order is
+    # extract -> load -> transform, not extract -> transform -> load.
+    # Loading before transforming is what makes this pipeline ELT
+    # (Extract-Load-Transform), matching dbt's actual design: dbt is the
+    # "T" in ELT, it transforms data already sitting in the warehouse.
     # ------------------------------------------------------------------ #
-    wait_for_transform = PythonSensor(
-        task_id="wait_for_transform_dag",
-        python_callable=wait_for_recent_success(DAG_ID_TRANSFORM, within_hours=6.0),
+    wait_for_extract = PythonSensor(
+        task_id="wait_for_extract_dag",
+        python_callable=wait_for_recent_success(DAG_ID_EXTRACT, within_hours=6.0),
         poke_interval=60,
         timeout=1800,
         mode="reschedule",
-        doc_md="Wait for a recent successful transform_dag run (skipped if chained from full_etl_dag).",
+        doc_md="Wait for a recent successful extract_dag run (skipped if chained from full_elt_dag).",
     )
 
     # ------------------------------------------------------------------ #
-    # Task 1 — Export mart tables to staging area (CSV snapshots)
+    # NOTE: export_marts and refresh_cache tasks used to live here, but
+    # they query marts.* tables — which are built by dbt (transform_dag),
+    # not by this DAG. With the ELT ordering fix (extract -> load ->
+    # transform), those tables don't exist yet (or only hold yesterday's
+    # stale data) at the point load_dag runs. Both tasks have been moved
+    # to transform_dag.py, where they correctly run AFTER dbt has
+    # (re)built the mart tables.
     # ------------------------------------------------------------------ #
-    @task(task_id="export_marts")
-    def export_marts(**context) -> dict:
-        """
-        Export key mart tables to CSV files in the staging directory so
-        downstream consumers (data warehouse, BI tools) can pick them up
-        independently of the pipeline's DB connection.
-        """
-        import csv
-        import os
-        from dags.constants import STAGING_DIR
-
-        stage = log_stage_start("export_marts")
-        os.makedirs(STAGING_DIR, exist_ok=True)
-
-        exported: dict[str, int] = {}
-
-        try:
-            from src.utils.database import get_engine, get_session
-            from sqlalchemy import text
-
-            engine = get_engine()
-            mart_queries = {
-                "fct_daily_snapshots": "SELECT * FROM marts.fct_daily_snapshots WHERE rate_date = current_date - 1",
-                "fct_exchange_rates":  "SELECT * FROM marts.fct_exchange_rates WHERE rate_date = current_date - 1",
-                "dim_currencies":      "SELECT * FROM marts.dim_currencies",
-            }
-
-            with get_session(engine) as session:
-                for table, query in mart_queries.items():
-                    try:
-                        rows = session.execute(text(query)).fetchall()
-                        if not rows:
-                            logger.info("[export_marts] %s: no rows for yesterday.", table)
-                            exported[table] = 0
-                            continue
-
-                        filepath = os.path.join(STAGING_DIR, f"{table}.csv")
-                        with open(filepath, "w", newline="") as f:
-                            writer = csv.writer(f)
-                            writer.writerow(rows[0]._fields)
-                            writer.writerows(rows)
-
-                        exported[table] = len(rows)
-                        logger.info("[export_marts] %s: %d rows exported to %s", table, len(rows), filepath)
-                    except Exception as exc:
-                        logger.warning("[export_marts] Could not export %s: %s", table, exc)
-                        exported[table] = -1
-
-        except Exception as exc:
-            logger.warning("[export_marts] DB export skipped (non-fatal): %s", exc)
-
-        stage.records_out = sum(v for v in exported.values() if v > 0)
-        stage.finish(success=True)
-        log_stage_end(stage, context)
-
-        summary = {"exported_tables": exported, "exported_at": utcnow_iso(), "staging_dir": STAGING_DIR}
-        xcom_push_summary(context, "export_summary", summary)
-        return summary
 
     # ------------------------------------------------------------------ #
     # Helper: load the validated extraction payload from shared staging
@@ -326,37 +289,19 @@ def load_dag():
         return summary
 
     # ------------------------------------------------------------------ #
-    # Task 3 — Refresh materialized views / caches
+    # Task 2 — Record load summary + pipeline metrics
+    #
+    # (Previously this was "refresh_cache", which refreshed materialized
+    # views built ON TOP OF marts.* tables. Since transform_dag now runs
+    # AFTER load_dag, those views wouldn't reflect today's data yet at
+    # this point — cache refreshing has moved to transform_dag.py,
+    # immediately after dbt builds the marts. This task just records the
+    # load-stage summary for full_elt_dag's final notification.)
     # ------------------------------------------------------------------ #
-    @task(task_id="refresh_cache")
-    def refresh_cache(**context) -> dict:
-        """
-        Refresh PostgreSQL materialized views or trigger downstream cache
-        invalidation so BI tools see the latest mart data immediately.
-        Extend this task to call your BI tool's API (e.g. Metabase, Superset).
-        """
-        stage = log_stage_start("refresh_cache")
-        refreshed: list[str] = []
-
-        try:
-            from src.utils.database import get_engine, get_session
-            from sqlalchemy import text
-
-            engine = get_engine()
-            # Refresh any materialized views that exist (non-fatal if absent)
-            mat_views = ["marts.mv_latest_rates", "marts.mv_daily_summary"]
-            with get_session(engine) as session:
-                for view in mat_views:
-                    try:
-                        session.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {view}"))
-                        refreshed.append(view)
-                        logger.info("[refresh_cache] Refreshed %s", view)
-                    except Exception:
-                        logger.debug("[refresh_cache] %s does not exist — skipping.", view)
-
-        except Exception as exc:
-            logger.warning("[refresh_cache] Cache refresh skipped (non-fatal): %s", exc)
-
+    @task(task_id="record_load_summary")
+    def record_load_summary(**context) -> dict:
+        """Record load-stage metrics and push the final load summary to XCom."""
+        stage = log_stage_start("record_load_summary")
         stage.finish(success=True)
         log_stage_end(stage, context)
 
@@ -367,18 +312,17 @@ def load_dag():
         )
         log_pipeline_metrics(run_metrics)
 
-        summary = {LOAD_SUMMARY_XCOM_KEY: {"refreshed_views": refreshed, "completed_at": utcnow_iso()}}
+        summary = {LOAD_SUMMARY_XCOM_KEY: {"completed_at": utcnow_iso()}}
         xcom_push_summary(context, LOAD_SUMMARY_XCOM_KEY, summary)
         return summary
 
     # ------------------------------------------------------------------ #
     # Wiring
     # ------------------------------------------------------------------ #
-    exports = export_marts()
     loaded  = load_warehouse()
-    cache   = refresh_cache()
+    summary = record_load_summary()
 
-    wait_for_transform >> exports >> loaded >> cache
+    wait_for_extract >> loaded >> summary
 
 
 load_dag()
